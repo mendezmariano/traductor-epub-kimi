@@ -80,6 +80,13 @@ def cmd_translate(args: argparse.Namespace) -> int:
             print("El glosario debe ser un JSON de pares termino->traduccion.", file=sys.stderr)
             return 1
 
+    if args.engine in ("ollama", "openai", "openai-compatible") and not args.model:
+        print(f"El motor '{args.engine}' requiere --model.", file=sys.stderr)
+        return 1
+    if args.engine in ("openai", "openai-compatible") and not args.api_key:
+        print(f"El motor '{args.engine}' requiere --api-key.", file=sys.stderr)
+        return 1
+
     engine_kwargs: dict = {"expansion_hint": args.expansion}
     if args.base_url:
         engine_kwargs["base_url"] = args.base_url
@@ -91,6 +98,8 @@ def cmd_translate(args: argparse.Namespace) -> int:
         engine_kwargs["model"] = args.model
     if args.temperature is not None:
         engine_kwargs["temperature"] = args.temperature
+    if args.engine != "dummy":
+        engine_kwargs["retries"] = args.retries
 
     try:
         translator = create_translator(args.engine, **engine_kwargs)
@@ -134,22 +143,25 @@ def main(argv: list[str] | None = None) -> int:
     tr = subparsers.add_parser("translate", help="Traduce las unidades extraídas.")
     tr.add_argument("work_dir", help="Directorio de trabajo generado por deconstruct.")
     tr.add_argument("--engine", default="dummy",
-                    choices=["dummy", "libretranslate", "openai", "ollama"],
+                    choices=["dummy", "libretranslate", "openai",
+                             "openai-compatible", "ollama"],
                     help="Motor de traducción.")
     tr.add_argument("--source", default="en", help="Idioma origen.")
     tr.add_argument("--target", default="es", help="Idioma destino.")
     tr.add_argument("--expansion", type=float, default=1.25,
                     help="Factor de expansión (dummy) o hint para LLMs.")
     tr.add_argument("--base-url", default=None,
-                    help="URL base del servicio (LibreTranslate, OpenAI o Ollama).")
+                    help="URL base del servicio (LibreTranslate, openai-compatible u Ollama).")
     tr.add_argument("--api-key", default=None,
-                    help="API key para OpenAI o LibreTranslate.")
+                    help="API key para openai-compatible o LibreTranslate.")
     tr.add_argument("--delay", type=float, default=None,
                     help="Segundos de espera entre peticiones (LibreTranslate).")
     tr.add_argument("--model", default=None,
-                    help="Modelo para OpenAI u Ollama.")
+                    help="Modelo para openai-compatible u Ollama.")
     tr.add_argument("--temperature", type=float, default=None,
                     help="Temperatura de muestreo para LLMs.")
+    tr.add_argument("--retries", type=int, default=3,
+                    help="Reintentos ante errores transitorios de API (LibreTranslate, OpenAI, Ollama).")
     tr.add_argument("--glossary", default=None,
                     help="Ruta a un JSON con pares 'término': 'traducción'.")
     tr.add_argument("--quiet", action="store_true",

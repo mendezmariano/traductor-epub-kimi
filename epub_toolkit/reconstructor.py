@@ -37,8 +37,21 @@ def _append_text(current: etree._Element, text: str) -> None:
             last.tail += text
 
 
+def _apply_translated_attrs(element: etree._Element, key: str,
+                            translated_attrs: dict[str, dict[str, str]] | None) -> None:
+    """Aplica atributos traducidos a un elemento si existen."""
+    if not translated_attrs:
+        return
+    attrs = translated_attrs.get(key)
+    if not attrs:
+        return
+    for attr_name, attr_value in attrs.items():
+        element.set(attr_name, attr_value)
+
+
 def _build_element(text: str, placeholders: dict[str, Placeholder],
-                   block_tag: str) -> etree._Element:
+                   block_tag: str,
+                   translated_attrs: dict[str, dict[str, str]] | None = None) -> etree._Element:
     """Construye un árbol DOM a partir de texto con placeholders."""
     root = etree.Element(f"{{{XHTML_NS}}}{block_tag}")
     stack: list[tuple[etree._Element, str | None]] = [(root, None)]
@@ -52,6 +65,7 @@ def _build_element(text: str, placeholders: dict[str, Placeholder],
             current, _ = stack[-1]
             if ph.self_closing:
                 el = etree.Element(f"{{{XHTML_NS}}}{ph.tag}", ph.attrs)
+                _apply_translated_attrs(el, ph_id, translated_attrs)
                 current.append(el)
             else:
                 # Si el tope de la pila fue abierto por este mismo placeholder,
@@ -60,20 +74,26 @@ def _build_element(text: str, placeholders: dict[str, Placeholder],
                     stack.pop()
                 else:
                     el = etree.Element(f"{{{XHTML_NS}}}{ph.tag}", ph.attrs)
+                    _apply_translated_attrs(el, ph_id, translated_attrs)
                     current.append(el)
                     stack.append((el, ph_id))
 
+    _apply_translated_attrs(root, "self", translated_attrs)
     return root
 
 
 def _apply_unit(element: etree._Element, unit: TranslationUnit) -> None:
     """Reemplaza el contenido de un elemento block por su texto traducido."""
-    text = unit.translation if unit.translation is not None else unit.original
+    if unit.translation is None:
+        # Sin traducción se conserva el elemento original intacto.
+        return
+
+    text = unit.translation
     if not text.strip():
         return
 
     block_tag = element.tag.split("}")[-1] if element.tag.startswith("{") else element.tag
-    new_root = _build_element(text, unit.placeholders, block_tag)
+    new_root = _build_element(text, unit.placeholders, block_tag, unit.translated_attrs)
 
     # Limpiar contenido anterior.
     for child in list(element):

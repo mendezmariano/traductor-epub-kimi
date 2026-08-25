@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import unittest
 
-from epub_toolkit.models import ExtractedDocument, ExtractedFile, TranslationUnit
+from epub_toolkit.models import ExtractedDocument, ExtractedFile, Placeholder, TranslationUnit
 from epub_toolkit.translator import (
     DummyTranslator,
     OllamaTranslator,
+    OpenAICompatibleTranslator,
     OpenAITranslator,
     _batch_prompt,
     _format_glossary,
@@ -100,6 +101,11 @@ class FactoryTestCase(unittest.TestCase):
     def test_create_openai(self) -> None:
         t = create_translator("openai", api_key="test", model="gpt-4o")
         self.assertIsInstance(t, OpenAITranslator)
+        self.assertIsInstance(t, OpenAICompatibleTranslator)
+
+    def test_create_openai_compatible(self) -> None:
+        t = create_translator("openai-compatible", api_key="test", model="gpt-4o")
+        self.assertIsInstance(t, OpenAICompatibleTranslator)
 
     def test_create_ollama(self) -> None:
         t = create_translator("ollama", model="llama3.2")
@@ -177,6 +183,66 @@ class BatchTranslationTestCase(unittest.TestCase):
         translate_document(translator, document, progress=False)
         self.assertIsNotNone(unit.translation)
         self.assertIn("[ES]", unit.translation)
+
+
+class TranslatableAttrsTestCase(unittest.TestCase):
+    """Pruebas de traducción de atributos traducibles."""
+
+    def test_translate_document_attrs(self) -> None:
+        unit = TranslationUnit(
+            unit_id="u1", xpath="//p[1]",
+            original="Hello world.",
+            placeholders={},
+            translatable_attrs={"self": {"title": "Greeting"}},
+        )
+        document = ExtractedDocument(
+            source_epub="test.epub",
+            language="en",
+            files={"xhtml/ch1.xhtml": ExtractedFile(path="xhtml/ch1.xhtml",
+                                                    units=[unit],
+                                                    context_title="Chapter 1")},
+        )
+        translator = DummyTranslator(expansion=1.0)
+        translate_document(translator, document, progress=False)
+        self.assertIsNotNone(unit.translation)
+        self.assertIn("[ES]", unit.translation)
+        self.assertEqual(unit.translated_attrs["self"]["title"], "[ES] Greeting [ES]")
+
+    def test_translate_document_inline_attrs(self) -> None:
+        unit = TranslationUnit(
+            unit_id="u1", xpath="//p[1]",
+            original="Hello {ph0}world{ph0}.",
+            placeholders={"{ph0}": {"tag": "b", "attrs": {}, "self_closing": False}},
+            translatable_attrs={"{ph0}": {"title": "Bold word"}},
+        )
+        document = ExtractedDocument(
+            source_epub="test.epub",
+            language="en",
+            files={"xhtml/ch1.xhtml": ExtractedFile(path="xhtml/ch1.xhtml",
+                                                    units=[unit],
+                                                    context_title="Chapter 1")},
+        )
+        translator = DummyTranslator(expansion=1.0)
+        translate_document(translator, document, progress=False)
+        self.assertEqual(unit.translated_attrs["{ph0}"]["title"], "[ES] Bold word [ES]")
+
+    def test_reconstructor_applies_translated_attrs(self) -> None:
+        from lxml import etree
+        from epub_toolkit.reconstructor import _build_element
+
+        placeholders = {
+            "{ph0}": Placeholder(tag="img", attrs={"alt": "Photo", "src": "a.jpg"}, self_closing=True),
+        }
+        translated_attrs = {
+            "self": {"title": "Saludo"},
+            "{ph0}": {"alt": "Foto"},
+        }
+        root = _build_element("Hello {ph0}world.", placeholders, "p", translated_attrs)
+
+        self.assertEqual(root.get("title"), "Saludo")
+        img = root[0]
+        self.assertEqual(img.get("alt"), "Foto")
+        self.assertEqual(img.get("src"), "a.jpg")
 
 
 class GlossaryTestCase(unittest.TestCase):
