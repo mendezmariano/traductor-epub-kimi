@@ -47,7 +47,13 @@ python3 main.py reconstruct output/Developer --output output/Developer_es.epub -
 - **Entregas completadas:** 4 de 8
 - **Tests:** 45 tests OK
 
-Ver [`STATUS.md`](STATUS.md) para retomar el desarrollo.
+Para retomar el proyecto después de un `/clear`, ejecuta:
+
+```bash
+bash scripts/resume.sh
+```
+
+Ver [`STATUS.md`](STATUS.md) para más detalles.
 
 ## Funcionalidades principales
 

@@ -52,6 +52,16 @@ Archivo principal: `epub_toolkit/translator.py`.
 
 ## Cómo verificar el estado actual
 
+Ejecuta el script de resumen:
+
+```bash
+bash scripts/resume.sh
+```
+
+Esto muestra la rama activa, el PR abierto, los últimos commits, el estado del proyecto y ejecuta los tests.
+
+También puedes hacerlo manualmente:
+
 ```bash
 # Cambiar a la rama activa si no estás en ella
 git checkout feature/entregas-010-017-008-009
