@@ -1,0 +1,25 @@
+# Directorios de salida y caché
+output/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# EPUBs de ejemplo (libros con copyright; cada usuario debe proveer los suyos)
+libros/*.epub
