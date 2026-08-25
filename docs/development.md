@@ -138,9 +138,27 @@ t = create_translator("dummy", expansion=1.25)
 translate_document(t, doc, progress=False)
 ```
 
+## Retomar después de un `/clear`
+
+Si retomas el proyecto sin contexto de conversión previo:
+
+1. Revisa [`STATUS.md`](../STATUS.md) para conocer la rama activa, el PR abierto y la entrega pendiente.
+2. Revisa [`BACKLOG.md`](../BACKLOG.md) para ver el plan de entregas y el detalle de cada una.
+3. Asegúrate de estar en la rama correcta:
+   ```bash
+   git status
+   git branch
+   ```
+4. Ejecuta los tests para confirmar el estado:
+   ```bash
+   python3 -m unittest discover tests -v
+   ```
+5. Continúa con la entrega marcada como `READY` en el backlog (actualmente **EPUB-014 — Validación de respuestas de LLM**).
+
 ## Contribuciones
 
 - Mantén los cambios mínimos y enfocados.
 - Añade tests para nuevas funcionalidades.
 - Actualiza la documentación en `docs/` si cambias la API o el comportamiento del CLI.
+- Actualiza [`BACKLOG.md`](../BACKLOG.md) y [`STATUS.md`](../STATUS.md) al finalizar una entrega.
 - Asegúrate de que `python3 -m unittest discover tests -v` pase antes de finalizar.

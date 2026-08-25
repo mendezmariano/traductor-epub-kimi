@@ -38,6 +38,16 @@ python3 main.py reconstruct output/Developer --output output/Developer_es.epub -
 - [Guía de desarrollo](docs/development.md) — tests, convenciones y cómo extender el proyecto.
 - [Decisiones técnicas](docs/decisions.md) — registro de decisiones de diseño y arquitectura.
 - [Backlog](BACKLOG.md) — historial, tareas pendientes y próximas mejoras.
+- [Estado actual](STATUS.md) — contexto para retomar el proyecto después de un `/clear`.
+
+## Estado actual
+
+- **Rama activa:** `feature/entregas-010-017-008-009`
+- **PR abierto:** https://github.com/mendezmariano/traductor-epub-kimi/pull/1
+- **Entregas completadas:** 4 de 8
+- **Tests:** 45 tests OK
+
+Ver [`STATUS.md`](STATUS.md) para retomar el desarrollo.
 
 ## Funcionalidades principales
 

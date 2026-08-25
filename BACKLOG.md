@@ -25,6 +25,28 @@
 | 7 | EPUB-011 | Barra de progreso visual | Baja | `IN REVIEW` |
 | 8 | EPUB-016 | Integración continua (GitHub Actions) | Baja | `IN REVIEW` |
 
+---
+
+## Estado del desarrollo
+
+- **Rama activa:** `feature/entregas-010-017-008-009`
+- **Pull Request abierto:** https://github.com/mendezmariano/traductor-epub-kimi/pull/1
+- **Última verificación de tests:** 45 tests OK.
+
+## Cómo continuar
+
+1. Si el PR #1 aún no está mergeado, revisarlo o mergearlo.
+2. Crear una nueva rama para la siguiente entrega, por ejemplo:
+   ```bash
+   git checkout master
+   git pull origin master
+   git checkout -b feature/EPUB-014-validacion-llm
+   ```
+3. Implementar **EPUB-014 — Validación de respuestas de LLM**.
+4. Ejecutar tests: `python3 -m unittest discover tests -v`.
+5. Actualizar este backlog y `STATUS.md`.
+6. Commitear, pushear y abrir un nuevo PR.
+
 ### Nota de la entrega 1
 
 Implementada la traducción de atributos traducibles. Los atributos `alt`, `title`, `aria-label` y `placeholder` de los elementos block e inline ahora se extraen, traducen en lote y restauran durante la reconstrucción. Se añadió el campo `translated_attrs` a `TranslationUnit`.
