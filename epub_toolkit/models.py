@@ -41,6 +41,7 @@ class TranslationUnit:
     translatable: bool = True
     translation: str | None = None
     translatable_attrs: dict[str, dict[str, str]] = field(default_factory=dict)
+    translated_attrs: dict[str, dict[str, str]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -53,6 +54,7 @@ class TranslationUnit:
             "translatable": self.translatable,
             "translation": self.translation,
             "translatable_attrs": self.translatable_attrs,
+            "translated_attrs": self.translated_attrs,
         }
 
     @classmethod
@@ -68,6 +70,7 @@ class TranslationUnit:
             translatable=data.get("translatable", True),
             translation=data.get("translation"),
             translatable_attrs=data.get("translatable_attrs", {}),
+            translated_attrs=data.get("translated_attrs", {}),
         )
 
 

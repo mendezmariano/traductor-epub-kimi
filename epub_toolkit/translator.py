@@ -227,6 +227,47 @@ def translate_batch_for_file(translator: Translator, file: ExtractedFile,
     return results
 
 
+def _translate_attrs_for_file(translator: Translator, file: ExtractedFile,
+                              source_lang: str, target_lang: str,
+                              glossary: Glossary | None = None) -> None:
+    """Traduce los atributos traducibles de las unidades de un archivo."""
+    units = [u for u in file.units if u.translatable]
+
+    attr_entries: list[tuple[TranslationUnit, str, str, dict[str, str], dict[str, str]]] = []
+    attr_texts: list[str] = []
+    for unit in units:
+        for key, attrs in unit.translatable_attrs.items():
+            for attr_name, attr_value in attrs.items():
+                text, glossary_mapping = _protect_glossary(attr_value, glossary or {})
+                protected, ph_mapping = _protect_placeholders(text)
+                attr_texts.append(protected)
+                attr_entries.append((unit, key, attr_name, ph_mapping, glossary_mapping))
+
+    if not attr_texts:
+        return
+
+    context = f"Atributos HTML de {file.context_title}" if file.context_title else "Atributos HTML"
+    try:
+        translated = translator.translate_batch(
+            attr_texts, source_lang, target_lang, context_title=context,
+        )
+    except NotImplementedError:
+        translated = _translate_batch_fallback(
+            translator, attr_texts, source_lang, target_lang
+        )
+
+    if len(translated) != len(attr_texts):
+        raise RuntimeError(
+            f"El traductor devolvió {len(translated)} atributos para"
+            f" {len(attr_texts)} atributos en {file.path}"
+        )
+
+    for (unit, key, attr_name, ph_map, glossary_map), t in zip(attr_entries, translated):
+        text = _restore_placeholders(t, ph_map)
+        text = _restore_glossary(text, glossary_map)
+        unit.translated_attrs.setdefault(key, {})[attr_name] = _clean_translated_text(text)
+
+
 def translate_document(translator: Translator, document: ExtractedDocument,
                        source_lang: str = "en", target_lang: str = "es",
                        progress: bool = True,
@@ -250,6 +291,10 @@ def translate_document(translator: Translator, document: ExtractedDocument,
             processed += 1
             if progress:
                 print(f"  [{processed}/{total_units}] {unit.unit_id} ({extracted_file.path})")
+
+        _translate_attrs_for_file(
+            translator, extracted_file, source_lang, target_lang, glossary
+        )
 
 
 class Translator(ABC):
@@ -296,10 +341,12 @@ class LibreTranslateTranslator(Translator):
     def __init__(self, base_url: str = "https://libretranslate.de",
                  api_key: str | None = None,
                  delay: float = 0.0,
-                 expansion_hint: float | None = None) -> None:
+                 expansion_hint: float | None = None,
+                 retries: int = 3) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.delay = delay
+        self.retries = retries
         # expansion_hint se acepta por consistencia; no se utiliza directamente.
 
     def translate(self, text: str, source_lang: str, target_lang: str) -> str:
@@ -325,10 +372,12 @@ class LibreTranslateTranslator(Translator):
         if self.api_key:
             payload["api_key"] = self.api_key
 
-        result = _post_json(url, payload)
+        result = _post_json_with_retry(url, payload, retries=self.retries)
         translated = result.get("translatedText")
         if translated is None:
-            raise RuntimeError(f"Respuesta inesperada de LibreTranslate: {result}")
+            raise RuntimeError(
+                f"Respuesta inesperada de LibreTranslate (falta translatedText): {result}"
+            )
 
         # LibreTranslate puede devolver una lista o un string según la entrada.
         if isinstance(translated, list):
@@ -345,19 +394,21 @@ class LibreTranslateTranslator(Translator):
         return texts_out
 
 
-class OpenAITranslator(Translator):
-    """Traductor mediante API de OpenAI o compatible (Groq, Mistral, etc.)."""
+class OpenAICompatibleTranslator(Translator):
+    """Traductor mediante API de chat completions (OpenAI, Groq, Mistral, etc.)."""
 
     def __init__(self, api_key: str,
                  base_url: str = "https://api.openai.com/v1",
                  model: str = "gpt-4o-mini",
                  temperature: float = 0.3,
-                 expansion_hint: float | None = None) -> None:
+                 expansion_hint: float | None = None,
+                 retries: int = 3) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.temperature = temperature
         self.expansion_hint = expansion_hint
+        self.retries = retries
 
     def translate(self, text: str, source_lang: str, target_lang: str) -> str:
         results = self.translate_batch([text], source_lang, target_lang)
@@ -380,11 +431,15 @@ class OpenAITranslator(Translator):
                 {"role": "user", "content": prompt},
             ],
         }
-        result = _post_json(url, payload, headers={"Authorization": f"Bearer {self.api_key}"})
+        result = _post_json_with_retry(
+            url, payload,
+            headers={"Authorization": f"Bearer {self.api_key}"},
+            retries=self.retries,
+        )
         try:
             content = result["choices"][0]["message"]["content"]
         except (KeyError, IndexError) as e:
-            raise RuntimeError(f"Respuesta inesperada de OpenAI: {result}") from e
+            raise RuntimeError(f"Respuesta inesperada de la API: {result}") from e
 
         parsed = _parse_numbered_translations(content, len(texts))
         if not parsed:
@@ -393,17 +448,23 @@ class OpenAITranslator(Translator):
         return parsed
 
 
+# Alias para compatibilidad con versiones anteriores.
+OpenAITranslator = OpenAICompatibleTranslator
+
+
 class OllamaTranslator(Translator):
     """Traductor mediante Ollama ejecutándose localmente."""
 
     def __init__(self, base_url: str = "http://localhost:11434",
                  model: str = "llama3.2",
                  temperature: float = 0.3,
-                 expansion_hint: float | None = None) -> None:
+                 expansion_hint: float | None = None,
+                 retries: int = 3) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.temperature = temperature
         self.expansion_hint = expansion_hint
+        self.retries = retries
 
     def translate(self, text: str, source_lang: str, target_lang: str) -> str:
         results = self.translate_batch([text], source_lang, target_lang)
@@ -424,7 +485,7 @@ class OllamaTranslator(Translator):
             "stream": False,
             "options": {"temperature": self.temperature},
         }
-        result = _post_json(url, payload)
+        result = _post_json_with_retry(url, payload, retries=self.retries)
         if "response" not in result:
             raise RuntimeError(f"Respuesta inesperada de Ollama: {result}")
 
@@ -434,9 +495,9 @@ class OllamaTranslator(Translator):
         return parsed
 
 
-def _post_json(url: str, payload: dict[str, Any],
-               headers: dict[str, str] | None = None) -> dict[str, Any]:
-    """Envía un POST JSON y devuelve la respuesta parseada."""
+def _post_json_raw(url: str, payload: dict[str, Any],
+                   headers: dict[str, str] | None = None) -> dict[str, Any]:
+    """Envía un POST JSON y devuelve la respuesta parseada sin envolver excepciones."""
     data = json.dumps(payload).encode("utf-8")
     req_headers = {
         "Content-Type": "application/json",
@@ -447,14 +508,51 @@ def _post_json(url: str, payload: dict[str, Any],
         req_headers.update(headers)
     req = urllib.request.Request(url, data=data, headers=req_headers, method="POST")
 
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _post_json(url: str, payload: dict[str, Any],
+               headers: dict[str, str] | None = None) -> dict[str, Any]:
+    """Envía un POST JSON y devuelve la respuesta parseada."""
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+        return _post_json_raw(url, payload, headers)
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="ignore")
         raise RuntimeError(f"Error HTTP ({e.code}): {body}") from e
     except Exception as e:
         raise RuntimeError(f"No se pudo contactar el servicio: {e}") from e
+
+
+def _is_retryable_http_error(code: int) -> bool:
+    """Determina si un código HTTP amerita reintento."""
+    return code >= 500 or code == 429
+
+
+def _post_json_with_retry(url: str, payload: dict[str, Any],
+                          headers: dict[str, str] | None = None,
+                          retries: int = 3,
+                          base_delay: float = 1.0) -> dict[str, Any]:
+    """Envía un POST JSON con reintentros exponenciales ante errores transitorios."""
+    last_error: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            return _post_json_raw(url, payload, headers)
+        except urllib.error.HTTPError as e:
+            last_error = e
+            body = e.read().decode("utf-8", errors="ignore")
+            if not _is_retryable_http_error(e.code) or attempt == retries:
+                raise RuntimeError(f"Error HTTP ({e.code}): {body}") from e
+        except (urllib.error.URLError, TimeoutError) as e:
+            last_error = e
+            if attempt == retries:
+                raise RuntimeError(f"No se pudo contactar el servicio: {e}") from e
+        except Exception as e:
+            raise RuntimeError(f"No se pudo contactar el servicio: {e}") from e
+
+        time.sleep(base_delay * (2 ** attempt))
+
+    raise RuntimeError(f"No se pudo contactar el servicio tras {retries} reintentos: {last_error}")
 
 
 def create_translator(engine: str, **kwargs) -> Translator:
@@ -464,8 +562,8 @@ def create_translator(engine: str, **kwargs) -> Translator:
         return DummyTranslator(**kwargs)
     if engine == "libretranslate":
         return LibreTranslateTranslator(**kwargs)
-    if engine == "openai":
-        return OpenAITranslator(**kwargs)
+    if engine in ("openai", "openai-compatible"):
+        return OpenAICompatibleTranslator(**kwargs)
     if engine == "ollama":
         return OllamaTranslator(**kwargs)
     raise ValueError(f"Motor de traducción desconocido: {engine}")

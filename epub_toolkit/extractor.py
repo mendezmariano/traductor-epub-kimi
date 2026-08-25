@@ -12,6 +12,7 @@ from .utils import (
     BLOCK_TAGS,
     INLINE_TAGS,
     SKIPPED_TAGS,
+    TRANSLATABLE_ATTRS,
     VOID_TAGS,
     XHTML_NS,
     clean_text,
@@ -81,18 +82,35 @@ def _collect_units(root: etree._Element, counter: Iterator[int]) -> list[Transla
     return units
 
 
+def _extract_translatable_attrs(element: etree._Element) -> dict[str, str]:
+    """Extrae atributos traducibles de un elemento."""
+    attrs: dict[str, str] = {}
+    for attr in TRANSLATABLE_ATTRS:
+        value = element.attrib.get(attr)
+        if value and value.strip():
+            attrs[attr] = clean_text(value)
+    return attrs
+
+
 def _unit_from_element(element: etree._Element,
                        counter: Iterator[int]) -> TranslationUnit | None:
     """Construye una TranslationUnit a partir de un elemento de bloque."""
     text_parts: list[str] = []
     placeholders: dict[str, Placeholder] = {}
+    translatable_attrs: dict[str, dict[str, str]] = {}
 
     if element.text:
         text_parts.append(clean_text(element.text))
 
+    block_attrs = _extract_translatable_attrs(element)
+    if block_attrs:
+        translatable_attrs["self"] = block_attrs
+
     for child in element:
         if _is_inline(child):
-            _extract_inline(child, text_parts, placeholders, counter)
+            ph_id, inline_attrs = _extract_inline(child, text_parts, placeholders, counter)
+            if inline_attrs:
+                translatable_attrs[ph_id] = inline_attrs
             if child.tail:
                 text_parts.append(clean_text(child.tail))
         # Los hijos no inline no deberían aparecer por la definición de unidad.
@@ -112,14 +130,18 @@ def _unit_from_element(element: etree._Element,
         placeholders=placeholders,
         translatable=True,
         translation=None,
+        translatable_attrs=translatable_attrs,
     )
 
 
 def _extract_inline(element: etree._Element,
                     text_parts: list[str],
                     placeholders: dict[str, Placeholder],
-                    counter: Iterator[int]) -> None:
-    """Serializa un tag inline como placeholder y recurre sobre sus hijos."""
+                    counter: Iterator[int]) -> tuple[str, dict[str, str]]:
+    """Serializa un tag inline como placeholder y recurre sobre sus hijos.
+
+    Devuelve el placeholder generado y los atributos traducibles del elemento.
+    """
     ph_id = make_placeholder(next(counter))
     tag = _local_name(element)
     attrs = {k.split("}")[-1] if k.startswith("{") else k: v
@@ -132,10 +154,12 @@ def _extract_inline(element: etree._Element,
         self_closing=_is_void(element),
     )
 
+    translatable_attrs = _extract_translatable_attrs(element)
+
     text_parts.append(ph_id)
 
     if _is_void(element):
-        return
+        return ph_id, translatable_attrs
 
     if element.text:
         text_parts.append(clean_text(element.text))
@@ -149,6 +173,7 @@ def _extract_inline(element: etree._Element,
             text_parts.append(clean_text("".join(child.itertext())))
 
     text_parts.append(ph_id)
+    return ph_id, translatable_attrs
 
 
 def _stable_xpath(element: etree._Element) -> str:
