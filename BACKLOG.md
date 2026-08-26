@@ -356,6 +356,9 @@ Base sólida para cualquier manipulación futura del EPUB. Permite traducir sin 
 - [x] **Agentes/skills de Kimi Code + segmentación LibreTranslate**  
   `commit: f8acb54` — Creados roles y skills para Kimi Code; implementada traducción segmentada en LibreTranslate para preservar placeholders; traducido `Developer.epub` a `output/Developer_es.epub`.
 
+- [x] **Fix de espacios alrededor de placeholders en LibreTranslate**  
+  `commit: 829cc62` — Conserva espacios entre texto plano y tags inline; evita artefactos como `sonpreentrenamientosobre`; re-traduce `Developer.epub`.
+
 ---
 
 ## Decisiones técnicas
