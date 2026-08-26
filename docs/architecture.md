@@ -113,6 +113,15 @@ La traducción se realiza por lotes agrupados por archivo XHTML. Esto reduce el 
 
 Antes de enviar texto a un servicio, los placeholders `{phN}` se reemplazan por marcadores `___PHN___` que los traductores suelen respetar. Después se restauran.
 
+### Validación de respuestas de LLM
+
+Tras recibir un lote traducido, `translate_batch_for_file` valida que cada texto conservé los mismos placeholders `{phN}` que el original. Si detecta placeholders perdidos:
+
+1. Reintenta la traducción de ese texto en modo estricto (`strict=True`), que añade una advertencia explícita al prompt.
+2. Si el reintento también falla, conserva el texto original y emite una advertencia con `warnings.warn`.
+
+La misma validación se aplica a los atributos traducibles.
+
 ### Protección de glosario
 
 Si se proporciona un glosario, sus términos se reemplazan por `___GLSN___` antes de la traducción y se restauran con su traducción después. Los términos se ordenan de más largo a más corto para evitar reemplazos parciales.
@@ -136,6 +145,11 @@ El prompt de sistema (`_system_prompt`) instruye al modelo a:
 - Usar el glosario si se proporciona.
 
 El prompt de lote (`_batch_prompt`) enumera los textos y pide al modelo que responda con la misma cantidad de líneas numeradas.
+
+### Progreso y dry-run
+
+- `translate_document` muestra una barra de progreso con `tqdm` cuando está instalado; de lo contrario, imprime avance textual. `--quiet` desactiva cualquier salida.
+- El CLI soporta `--dry-run` para estimar el volumen (unidades, caracteres y tokens aproximados) sin traducir ni escribir `translation_units.json`.
 
 ## 5. Reconstructor
 

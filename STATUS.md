@@ -5,50 +5,46 @@
 ## Rama activa
 
 ```
-feature/entregas-010-017-008-009
+master
 ```
 
-## Pull Request abierto
+## Pull Requests abiertos
 
-- **URL:** https://github.com/mendezmariano/traductor-epub-kimi/pull/1
-- **Título:** Entregas 1-4: atributos traducibles, roundtrip DOM+CSS, tests LibreTranslate y reintentos API
-- **Estado:** abierto
-- **Base:** `master`
+| PR | Entrega | Rama | URL |
+|----|---------|------|-----|
+| #2 | EPUB-014 — Validación de respuestas de LLM | `feature/EPUB-014-llm-validation` | https://github.com/mendezmariano/traductor-epub-kimi/pull/2 |
+| #3 | EPUB-012 — Modo dry-run | `feature/EPUB-012-dry-run` | https://github.com/mendezmariano/traductor-epub-kimi/pull/3 |
+| #4 | EPUB-011 — Barra de progreso visual | `feature/EPUB-011-progress-bar` | https://github.com/mendezmariano/traductor-epub-kimi/pull/4 |
+| #5 | EPUB-016 — Integración continua (GitHub Actions) | `feature/EPUB-016-ci` | https://github.com/mendezmariano/traductor-epub-kimi/pull/5 |
+
+> El PR #1 (entregas 1–4) ya fue mergeado a `master`.
 
 ## Entregas completadas
 
-| Entrega | ID | Tarea | Commit |
-|---------|----|-------|--------|
+| Entrega | ID | Tarea | Commit/PR |
+|---------|----|-------|-----------|
 | 1 | EPUB-010 | Traducir atributos traducibles (`alt`, `title`, `aria-label`, `placeholder`) | `11789d7` |
 | 2 | EPUB-017 | Descomposición y reconstrucción completa del EPUB (DOM + CSS) | `2ffb5a9` |
 | 3 | EPUB-008 | Fortalecer tests de LibreTranslate | `6ade166` |
 | 4 | EPUB-009 | Reintentos en traductores API | `606dca4` |
+| 5 | EPUB-014 | Validación de respuestas de LLM | PR #2 |
+| 6 | EPUB-012 | Modo dry-run | PR #3 |
+| 7 | EPUB-011 | Barra de progreso visual | PR #4 |
+| 8 | EPUB-016 | Integración continua (GitHub Actions) | PR #5 |
 
 ## Entregas pendientes
 
-| Entrega | ID | Tarea | Prioridad | Estado |
-|---------|----|-------|-----------|--------|
-| 5 | EPUB-014 | Validación de respuestas de LLM | Media | `READY` |
-| 6 | EPUB-012 | Modo dry-run | Baja | `READY` |
-| 7 | EPUB-011 | Barra de progreso visual | Baja | `IN REVIEW` |
-| 8 | EPUB-016 | Integración continua (GitHub Actions) | Baja | `IN REVIEW` |
+Ninguna. Todas las entregas planificadas están implementadas y pendientes de merge.
 
 Ver detalles completos en [`BACKLOG.md`](BACKLOG.md).
 
 ## Próximo paso recomendado
 
-**Entrega 5 — EPUB-014: Validación de respuestas de LLM**
+Revisar y mergear los PRs #2 a #5. Después del merge, ejecutar:
 
-Objetivo: evitar reconstruir EPUBs con placeholders rotos.
-
-Tareas:
-
-1. Verificar que la respuesta de un LLM conserve todos los placeholders.
-2. Si no, aplicar fallback automático a traducción uno a uno con prompt más estricto.
-3. Registrar advertencias cuando se detecten placeholders perdidos.
-4. Añadir tests con mock que devuelva respuesta sin placeholders.
-
-Archivo principal: `epub_toolkit/translator.py`.
+```bash
+python3 -m unittest discover tests -v
+```
 
 ## Cómo verificar el estado actual
 
@@ -82,11 +78,11 @@ python3 -m unittest discover tests -v
 python3 -m unittest discover tests -v
 ```
 
-Última verificación: **45 tests OK**.
+Última verificación: **47+ tests OK** en cada rama de entrega.
 
 ## Notas importantes
 
-- Los cambios de las entregas 1-4 están en la rama `feature/entregas-010-017-008-009` y aún no se mergearon a `master`.
-- El PR #1 está abierto y listo para revisión/merge.
-- Antes de continuar con la entrega 5, conviene mergear el PR o seguir trabajando sobre la misma rama.
-- Si se mergea el PR, crear una nueva rama para la entrega 5 (ej. `feature/EPUB-014-validacion-llm`).
+- El PR #1 (entregas 1–4) ya fue mergeado a `master`.
+- Las entregas 5–8 están en PRs separados (#2 a #5) listos para revisión/merge.
+- Cada rama de entrega pasa `python3 -m unittest discover tests -v`.
+- El workflow `.github/workflows/ci.yml` ejecutará los tests automáticamente en push/PR a `master`/`main`.

@@ -42,10 +42,10 @@ python3 main.py reconstruct output/Developer --output output/Developer_es.epub -
 
 ## Estado actual
 
-- **Rama activa:** `feature/entregas-010-017-008-009`
-- **PR abierto:** https://github.com/mendezmariano/traductor-epub-kimi/pull/1
-- **Entregas completadas:** 4 de 8
-- **Tests:** 45 tests OK
+- **Rama activa:** `master`
+- **PRs abiertos:** #2, #3, #4, #5 (entregas 5–8)
+- **Entregas completadas:** 8 de 8
+- **Tests:** 47+ tests OK
 
 Para retomar el proyecto después de un `/clear`, ejecuta:
 
@@ -61,8 +61,12 @@ Ver [`STATUS.md`](STATUS.md) para más detalles.
 - Traducción por lotes agrupada por archivo XHTML para mejorar coherencia y reducir llamadas a API.
 - Soporte de glosarios para términos técnicos consistentes.
 - Preservación de tags inline mediante placeholders numerados.
+- Validación de respuestas de LLM: reintento estricto y fallback al original si se pierden placeholders.
+- Modo `--dry-run` para estimar volumen antes de traducir.
+- Barra de progreso visual (`tqdm`) con fallback a texto plano.
 - Actualización del idioma en el archivo `.opf`.
 - Tests de roundtrip que verifican la validez del EPUB reconstruido.
+- Integración continua con GitHub Actions.
 
 ## Tests
 

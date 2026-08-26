@@ -6,9 +6,9 @@
 
 | Estado | Cantidad |
 |--------|----------|
-| Completado | 11 |
+| Completado | 15 |
 | En progreso | 0 |
-| Por hacer | 6 |
+| Por hacer | 0 |
 
 ---
 
@@ -20,32 +20,28 @@
 | 2 | EPUB-017 | Descomposición y reconstrucción completa del EPUB (DOM + CSS) | Alta | `DONE` |
 | 3 | EPUB-008 | Fortalecer tests de LibreTranslate | Media | `DONE` |
 | 4 | EPUB-009 | Implementar reintentos en traductores API | Media | `DONE` |
-| 5 | EPUB-014 | Validación de respuestas de LLM | Media | `READY` |
-| 6 | EPUB-012 | Modo dry-run | Baja | `READY` |
-| 7 | EPUB-011 | Barra de progreso visual | Baja | `IN REVIEW` |
-| 8 | EPUB-016 | Integración continua (GitHub Actions) | Baja | `IN REVIEW` |
+| 5 | EPUB-014 | Validación de respuestas de LLM | Media | `DONE` |
+| 6 | EPUB-012 | Modo dry-run | Baja | `DONE` |
+| 7 | EPUB-011 | Barra de progreso visual | Baja | `DONE` |
+| 8 | EPUB-016 | Integración continua (GitHub Actions) | Baja | `DONE` |
 
 ---
 
 ## Estado del desarrollo
 
-- **Rama activa:** `feature/entregas-010-017-008-009`
-- **Pull Request abierto:** https://github.com/mendezmariano/traductor-epub-kimi/pull/1
-- **Última verificación de tests:** 45 tests OK.
+- **Rama activa:** `master`
+- **Pull Requests abiertos:**
+  - EPUB-014: https://github.com/mendezmariano/traductor-epub-kimi/pull/2
+  - EPUB-012: https://github.com/mendezmariano/traductor-epub-kimi/pull/3
+  - EPUB-011: https://github.com/mendezmariano/traductor-epub-kimi/pull/4
+  - EPUB-016: https://github.com/mendezmariano/traductor-epub-kimi/pull/5
+- **Última verificación de tests:** 47+ tests OK en cada rama.
 
 ## Cómo continuar
 
-1. Si el PR #1 aún no está mergeado, revisarlo o mergearlo.
-2. Crear una nueva rama para la siguiente entrega, por ejemplo:
-   ```bash
-   git checkout master
-   git pull origin master
-   git checkout -b feature/EPUB-014-validacion-llm
-   ```
-3. Implementar **EPUB-014 — Validación de respuestas de LLM**.
-4. Ejecutar tests: `python3 -m unittest discover tests -v`.
-5. Actualizar este backlog y `STATUS.md`.
-6. Commitear, pushear y abrir un nuevo PR.
+1. Revisar y mergear los PRs #2 a #5.
+2. Ejecutar tests en `master`: `python3 -m unittest discover tests -v`.
+3. Actualizar `STATUS.md` después del merge.
 
 ### Nota de la entrega 1
 
@@ -82,6 +78,41 @@ Se implementaron reintentros exponenciales en `_post_json_with_retry` para los m
 - `LibreTranslateTranslator`, `OpenAICompatibleTranslator` y `OllamaTranslator` aceptan `retries` (por defecto 3).
 - El CLI acepta `--retries`.
 - Se añadió `tests/test_retries.py` con mocks de fallos transitorios.
+
+### Nota de la entrega 5
+
+Se añadió validación de placeholders después de recibir respuestas de LLM:
+
+- `_collect_placeholder_ids` y `_validate_translated_texts` comparan los placeholders del original con los de la traducción.
+- Si un lote pierde placeholders, se reintenta en modo estricto (`strict=True`) uno a uno.
+- Si el reintento también falla, se conserva el texto original y se emite `warnings.warn`.
+- La misma validación se aplica a los atributos traducibles.
+- Se añadió `PlaceholderValidationTestCase` en `tests/test_translator.py`.
+
+### Nota de la entrega 6
+
+Se implementó el modo dry-run en el comando `translate`:
+
+- Opción `--dry-run` que solo estima volumen sin traducir ni escribir `translation_units.json`.
+- Función `estimate_document()` en `epub_toolkit/translator.py` que cuenta unidades, caracteres y tokens estimados.
+- Tests de la estimación y del CLI en `tests/test_translator.py`.
+
+### Nota de la entrega 7
+
+Se mejoró la experiencia visual de progreso:
+
+- `translate_document` usa `tqdm` como barra de progreso cuando está disponible.
+- Si `tqdm` no está instalado, se mantiene el progreso textual.
+- `--quiet` desactiva cualquier salida de progreso.
+- `tqdm` sigue siendo una dependencia opcional.
+
+### Nota de la entrega 8
+
+Se añadió integración continua:
+
+- Workflow `.github/workflows/ci.yml`.
+- Ejecuta tests en Python 3.12 ante push y pull requests a `master`/`main`.
+- Instala `lxml` y corre `python3 -m unittest discover tests -v`.
 
 ---
 
@@ -185,9 +216,22 @@ Base sólida para cualquier manipulación futura del EPUB. Permite traducir sin 
 
 **Qué se implementa**
 
-- Verificar que la respuesta conserve todos los placeholders.
-- Fallback automático a traducción uno a uno si falla.
-- Registrar advertencias.
+- `_collect_placeholder_ids` y `_validate_translated_texts` en `epub_toolkit/translator.py`.
+- Reintento estricto (`strict=True`) uno a uno cuando un lote pierde placeholders.
+- Fallback al texto original con `warnings.warn` si el reintento también falla.
+- Validación aplicada también a atributos traducibles.
+
+**Archivos**
+
+- `epub_toolkit/translator.py`
+- `tests/test_translator.py`
+
+**Tests**
+
+- Recuperación mediante reintento estricto.
+- Advertencia y fallback al original cuando no se recupera.
+- Validación correcta sin advertencias cuando los placeholders se conservan.
+- Validación de atributos traducibles.
 
 ---
 
@@ -197,9 +241,20 @@ Base sólida para cualquier manipulación futura del EPUB. Permite traducir sin 
 
 **Qué se implementa**
 
-- Opción `--dry-run` en `translate`.
-- Contar unidades y estimar caracteres/tokens.
-- No escribir `translation_units.json` si está activo.
+- Opción `--dry-run` en el comando `translate` del CLI.
+- Función `estimate_document()` que calcula unidades, caracteres y tokens estimados.
+- No se traduce ni se escribe `translation_units.json` en dry-run.
+
+**Archivos**
+
+- `main.py`
+- `epub_toolkit/translator.py`
+- `tests/test_translator.py`
+
+**Tests**
+
+- Estimación correcta de unidades y caracteres incluyendo atributos.
+- CLI dry-run no modifica el archivo de unidades.
 
 ---
 
@@ -209,9 +264,20 @@ Base sólida para cualquier manipulación futura del EPUB. Permite traducir sin 
 
 **Qué se implementa**
 
-- Integrar `tqdm` como dependencia opcional.
-- Mostrar barra de progreso por archivo/unidad.
-- Fallback a texto plano si no está instalado.
+- Uso opcional de `tqdm` en `translate_document`.
+- Barra de progreso por unidad con descripción "Traduciendo unidades".
+- Fallback a progreso textual cuando `tqdm` no está instalado.
+- `--quiet` desactiva toda salida de progreso.
+
+**Archivos**
+
+- `epub_toolkit/translator.py`
+- `tests/test_translator.py`
+
+**Tests**
+
+- `progress=False` no produce salida.
+- Fallback textual cuando `tqdm` no está disponible.
 
 ---
 
@@ -221,8 +287,13 @@ Base sólida para cualquier manipulación futura del EPUB. Permite traducir sin 
 
 **Qué se implementa**
 
-- Workflow de GitHub Actions en Python 3.12.
-- Disparadores en push a `main` y pull requests.
+- Workflow `.github/workflows/ci.yml`.
+- Ejecuta tests en Python 3.12 ante push y pull requests a `master`/`main`.
+- Instala `lxml` como única dependencia.
+
+**Archivos**
+
+- `.github/workflows/ci.yml`
 
 ---
 
@@ -260,6 +331,18 @@ Base sólida para cualquier manipulación futura del EPUB. Permite traducir sin 
 
 - [x] **EPUB-009** — Reintentos en traductores API  
   `sin commit` — Entrega 4 completada. Backoff exponencial y tests con fallos transitorios.
+
+- [x] **EPUB-014** — Validación de respuestas de LLM  
+  PR #2 — Validación de placeholders, reintento estricto y fallback con advertencia.
+
+- [x] **EPUB-012** — Modo dry-run  
+  PR #3 — Estimación de volumen sin traducir ni escribir units.
+
+- [x] **EPUB-011** — Barra de progreso visual  
+  PR #4 — Barra `tqdm` opcional con fallback textual.
+
+- [x] **EPUB-016** — Integración continua (GitHub Actions)  
+  PR #5 — Workflow CI en Python 3.12.
 
 ---
 
