@@ -24,6 +24,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from .models import ExtractedDocument, ExtractedFile, TranslationUnit
+from .utils import split_text_with_placeholders
 
 
 # Glosario: término en idioma origen -> término en idioma destino.
@@ -97,6 +98,94 @@ def _format_glossary(glossary: Glossary) -> str:
         return ""
     lines = "\n".join(f"  {term} -> {translation}" for term, translation in glossary.items())
     return f"\nUsa obligatoriamente el siguiente glosario de términos técnicos:\n{lines}\n"
+
+
+def _apply_glossary(text: str, glossary: Glossary) -> str:
+    """Aplica un glosario reemplazando términos directamente.
+
+    Ordena los términos de más largo a más corto para evitar reemplazos
+    parciales. Respeta límites de palabra y es insensible a mayúsculas/minúsculas.
+    """
+    if not glossary:
+        return text
+    for term, translation in sorted(glossary.items(), key=lambda kv: len(kv[0]), reverse=True):
+        escaped = re.escape(term)
+        text = re.sub(rf"\b{escaped}\b", translation, text, flags=re.IGNORECASE)
+    return text
+
+
+def _segment_texts(texts: list[str]) -> tuple[list[str], list[list[tuple[str | None, int]]]]:
+    """Divide textos con placeholders en segmentos planos y metadatos.
+
+    Devuelve:
+      - plain_segments: lista de segmentos de texto plano (sin placeholders).
+      - unit_segments: lista paralela a `texts`; cada elemento es una lista de
+        (placeholder_id, index_in_plain_segments). Si placeholder_id es None,
+        el segmento plano está en plain_segments[index].
+    """
+    plain_segments: list[str] = []
+    unit_segments: list[list[tuple[str | None, int]]] = []
+    for text in texts:
+        info: list[tuple[str | None, int]] = []
+        for part, ph in split_text_with_placeholders(text):
+            if ph is None:
+                idx = len(plain_segments)
+                plain_segments.append(part)
+                info.append((None, idx))
+            else:
+                info.append((ph, -1))
+        unit_segments.append(info)
+    return plain_segments, unit_segments
+
+
+def _rebuild_texts(plain_translated: list[str],
+                   unit_segments: list[list[tuple[str | None, int]]]) -> list[str]:
+    """Reconstruye los textos originales a partir de segmentos traducidos."""
+    results: list[str] = []
+    for info in unit_segments:
+        parts: list[str] = []
+        for ph, idx in info:
+            if ph is None:
+                parts.append(plain_translated[idx])
+            else:
+                parts.append(ph)
+        results.append("".join(parts))
+    return results
+
+
+def _translate_plain_segments(translator: Translator,
+                              segments: list[str],
+                              source_lang: str,
+                              target_lang: str,
+                              batch_size: int = 100) -> list[str]:
+    """Traduce una lista de segmentos planos en lotes."""
+    if not segments:
+        return []
+
+    translated: list[str] = [""] * len(segments)
+    # Agrupar índices de segmentos no vacíos para no enviar strings vacíos.
+    non_empty: list[int] = [i for i, s in enumerate(segments) if s]
+
+    for start in range(0, len(non_empty), batch_size):
+        batch_indices = non_empty[start:start + batch_size]
+        batch = [segments[i] for i in batch_indices]
+        try:
+            batch_translated = translator.translate_batch(
+                batch, source_lang, target_lang
+            )
+        except NotImplementedError:
+            batch_translated = _translate_batch_fallback(
+                translator, batch, source_lang, target_lang
+            )
+        if len(batch_translated) != len(batch):
+            raise RuntimeError(
+                f"El traductor devolvió {len(batch_translated)} textos para"
+                f" {len(batch)} segmentos"
+            )
+        for idx, text in zip(batch_indices, batch_translated):
+            translated[idx] = text
+
+    return translated
 
 
 def _clean_translated_text(text: str) -> str:
@@ -297,6 +386,11 @@ def translate_batch_for_file(translator: Translator, file: ExtractedFile,
     if not units:
         return []
 
+    if getattr(translator, "segment_placeholders", False):
+        return _translate_batch_for_file_segmented(
+            translator, file, units, source_lang, target_lang, glossary
+        )
+
     protected_texts: list[str] = []
     ph_mappings: list[dict[str, str]] = []
     glossary_mappings: list[dict[str, str]] = []
@@ -319,38 +413,75 @@ def translate_batch_for_file(translator: Translator, file: ExtractedFile,
     )
 
 
+def _translate_batch_for_file_segmented(translator: Translator,
+                                        file: ExtractedFile,
+                                        units: list[TranslationUnit],
+                                        source_lang: str,
+                                        target_lang: str,
+                                        glossary: Glossary | None = None) -> list[str]:
+    """Traduce un archivo segmentando por placeholders.
+
+    Separa el texto plano de los placeholders, traduce los segmentos planos en
+    lotes y reconstruye cada unidad con los placeholders originales. Aplica el
+    glosario después de reconstruir para evitar enviar marcadores al servicio.
+    """
+    originals = [u.original for u in units]
+    plain_segments, unit_segments = _segment_texts(originals)
+    translated_segments = _translate_plain_segments(
+        translator, plain_segments, source_lang, target_lang
+    )
+    results = _rebuild_texts(translated_segments, unit_segments)
+
+    if glossary:
+        results = [_apply_glossary(t, glossary) for t in results]
+
+    return [_clean_translated_text(t) for t in results]
+
+
 def _translate_attrs_for_file(translator: Translator, file: ExtractedFile,
                               source_lang: str, target_lang: str,
                               glossary: Glossary | None = None) -> None:
     """Traduce los atributos traducibles de las unidades de un archivo."""
     units = [u for u in file.units if u.translatable]
 
-    attr_entries: list[tuple[TranslationUnit, str, str, dict[str, str], dict[str, str]]] = []
-    attr_texts: list[str] = []
+    attr_entries: list[tuple[TranslationUnit, str, str]] = []
     attr_originals: list[str] = []
-    attr_ph_mappings: list[dict[str, str]] = []
-    attr_glossary_mappings: list[dict[str, str]] = []
-    attr_labels: list[str] = []
     for unit in units:
         for key, attrs in unit.translatable_attrs.items():
             for attr_name, attr_value in attrs.items():
-                text, glossary_mapping = _protect_glossary(attr_value, glossary or {})
-                protected, ph_mapping = _protect_placeholders(text)
-                attr_texts.append(protected)
                 attr_entries.append((unit, key, attr_name))
                 attr_originals.append(attr_value)
-                attr_ph_mappings.append(ph_mapping)
-                attr_glossary_mappings.append(glossary_mapping)
-                attr_labels.append(f"{file.path}::{unit.unit_id}@{key}.{attr_name}")
 
-    if not attr_texts:
+    if not attr_originals:
         return
 
-    context = f"Atributos HTML de {file.context_title}" if file.context_title else "Atributos HTML"
-    translated = _translate_and_validate(
-        translator, attr_texts, attr_originals, attr_ph_mappings,
-        attr_glossary_mappings, source_lang, target_lang, context, attr_labels,
-    )
+    if getattr(translator, "segment_placeholders", False):
+        plain_segments, unit_segments = _segment_texts(attr_originals)
+        translated_segments = _translate_plain_segments(
+            translator, plain_segments, source_lang, target_lang, batch_size=100
+        )
+        translated = _rebuild_texts(translated_segments, unit_segments)
+        if glossary:
+            translated = [_apply_glossary(t, glossary) for t in translated]
+        translated = [_clean_translated_text(t) for t in translated]
+    else:
+        attr_texts: list[str] = []
+        attr_ph_mappings: list[dict[str, str]] = []
+        attr_glossary_mappings: list[dict[str, str]] = []
+        attr_labels: list[str] = []
+        for original, (unit, key, attr_name) in zip(attr_originals, attr_entries):
+            text, glossary_mapping = _protect_glossary(original, glossary or {})
+            protected, ph_mapping = _protect_placeholders(text)
+            attr_texts.append(protected)
+            attr_ph_mappings.append(ph_mapping)
+            attr_glossary_mappings.append(glossary_mapping)
+            attr_labels.append(f"{file.path}::{unit.unit_id}@{key}.{attr_name}")
+
+        context = f"Atributos HTML de {file.context_title}" if file.context_title else "Atributos HTML"
+        translated = _translate_and_validate(
+            translator, attr_texts, attr_originals, attr_ph_mappings,
+            attr_glossary_mappings, source_lang, target_lang, context, attr_labels,
+        )
 
     for (unit, key, attr_name), text in zip(attr_entries, translated):
         unit.translated_attrs.setdefault(key, {})[attr_name] = text
@@ -431,6 +562,10 @@ def translate_document(translator: Translator, document: ExtractedDocument,
 class Translator(ABC):
     """Interfaz base para motores de traducción."""
 
+    # Si es True, el pipeline traduce segmentos de texto plano separando los
+    # placeholders, evitando que el servicio modifique los marcadores.
+    segment_placeholders: bool = False
+
     @abstractmethod
     def translate(self, text: str, source_lang: str, target_lang: str) -> str:
         """Traduce un texto del idioma origen al destino."""
@@ -470,6 +605,10 @@ class DummyTranslator(Translator):
 
 class LibreTranslateTranslator(Translator):
     """Traductor mediante una instancia de LibreTranslate (local o pública)."""
+
+    # LibreTranslate tiende a modificar o eliminar marcadores de placeholders.
+    # Usamos segmentación para preservar el marcado inline.
+    segment_placeholders = True
 
     def __init__(self, base_url: str = "https://libretranslate.de",
                  api_key: str | None = None,

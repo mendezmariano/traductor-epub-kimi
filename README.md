@@ -40,6 +40,18 @@ python3 main.py reconstruct output/Developer --output output/Developer_es.epub -
 - [Backlog](BACKLOG.md) — historial, tareas pendientes y próximas mejoras.
 - [Estado actual](STATUS.md) — contexto para retomar el proyecto después de un `/clear`.
 
+## Agentes y skills de Kimi Code
+
+El proyecto incluye roles y skills para que Kimi Code trabaje de forma consistente:
+
+- [`AGENTS.md`](AGENTS.md) — reglas generales para todos los agentes.
+- [`.agents/epub-translator.md`](.agents/epub-translator.md) — rol de traducción de EPUBs.
+- [`.agents/quality-reviewer.md`](.agents/quality-reviewer.md) — rol de revisión de calidad y tests.
+- [`.agents/release-manager.md`](.agents/release-manager.md) — rol de gestión de releases.
+- [`skills/epub-pipeline.md`](skills/epub-pipeline.md) — skill para ejecutar el pipeline completo.
+- [`skills/run-tests.md`](skills/run-tests.md) — skill para ejecutar tests.
+- [`skills/create-release.md`](skills/create-release.md) — skill para preparar releases.
+
 ## Estado actual
 
 - **Rama activa:** `master`

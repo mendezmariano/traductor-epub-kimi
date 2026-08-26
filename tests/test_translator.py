@@ -18,15 +18,19 @@ from typing import Any
 from epub_toolkit.models import ExtractedDocument, ExtractedFile, Placeholder, TranslationUnit
 from epub_toolkit.translator import (
     DummyTranslator,
+    LibreTranslateTranslator,
     OllamaTranslator,
     OpenAICompatibleTranslator,
     OpenAITranslator,
     Translator,
+    _apply_glossary,
     _batch_prompt,
     _format_glossary,
     _parse_numbered_translations,
     _protect_glossary,
+    _rebuild_texts,
     _restore_glossary,
+    _segment_texts,
     _system_prompt,
     create_translator,
     estimate_document,
@@ -501,6 +505,69 @@ class ProgressBarTestCase(unittest.TestCase):
 
         self.assertIn("[1/1]", output)
         self.assertIn("u1", output)
+
+
+class SegmentedTranslationTestCase(unittest.TestCase):
+    """Pruebas de segmentación de placeholders para LibreTranslate."""
+
+    def test_segment_texts_splits_plain_and_placeholders(self) -> None:
+        texts = ["Hello {ph0}world{ph0}.", "{ph1}Item{ph1} two"]
+        plain, info = _segment_texts(texts)
+        self.assertEqual(plain, ["Hello ", "world", ".", "Item", " two"])
+        self.assertEqual(len(info), 2)
+        self.assertEqual(info[0], [(None, 0), ("{ph0}", -1), (None, 1), ("{ph0}", -1), (None, 2)])
+        self.assertEqual(info[1], [("{ph1}", -1), (None, 3), ("{ph1}", -1), (None, 4)])
+
+    def test_rebuild_texts_restores_placeholders(self) -> None:
+        texts = ["Hello {ph0}world{ph0}."]
+        plain, info = _segment_texts(texts)
+        translated = ["Hola ", "mundo", "."]
+        results = _rebuild_texts(translated, info)
+        self.assertEqual(results, ["Hola {ph0}mundo{ph0}."])
+
+    def test_apply_glossary_respects_word_boundaries(self) -> None:
+        glossary = {"API": "Interfaz de Programación", "web": "red"}
+        text = "The API and web services"
+        result = _apply_glossary(text, glossary)
+        self.assertEqual(result, "The Interfaz de Programación and red services")
+
+    def test_libretranslate_uses_segmentation(self) -> None:
+        translator = LibreTranslateTranslator()
+        self.assertTrue(translator.segment_placeholders)
+
+
+class LibreTranslateSegmentationIntegrationTestCase(unittest.TestCase):
+    """Simula un LibreTranslate que destruye marcadores de placeholders."""
+
+    class DestroyingTranslator(Translator):
+        """Traductor que ignora/elimina cualquier marcador ___PHN___."""
+
+        segment_placeholders = True
+
+        def translate(self, text: str, source_lang: str, target_lang: str) -> str:
+            return self.translate_batch([text], source_lang, target_lang)[0]
+
+        def translate_batch(self, texts, source_lang, target_lang,
+                            context_title: str = "", glossary=None, **kwargs):
+            # Simula que el servicio traduce el texto plano pero destruye
+            # cualquier marcador de protección.
+            return [re.sub(r"___PH\d+___", "", t).strip() or text
+                    for t, text in zip(texts, texts)]
+
+    def test_segmentation_preserves_placeholders_when_service_destroys_markers(self) -> None:
+        unit = TranslationUnit(
+            unit_id="u1",
+            xpath="//p[1]",
+            original="Hello {ph0}world{ph0}.",
+            placeholders={"{ph0}": {"tag": "b", "attrs": {}, "self_closing": False}},
+        )
+        file = ExtractedFile(path="xhtml/ch1.xhtml", units=[unit],
+                             context_title="Chapter 1")
+        translator = self.DestroyingTranslator()
+        result = translate_batch_for_file(translator, file, "en", "es")
+        self.assertEqual(len(result), 1)
+        self.assertIn("{ph0}", result[0])
+        self.assertIn("world", result[0])
 
 
 if __name__ == "__main__":
