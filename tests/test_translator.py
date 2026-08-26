@@ -513,17 +513,42 @@ class SegmentedTranslationTestCase(unittest.TestCase):
     def test_segment_texts_splits_plain_and_placeholders(self) -> None:
         texts = ["Hello {ph0}world{ph0}.", "{ph1}Item{ph1} two"]
         plain, info = _segment_texts(texts)
-        self.assertEqual(plain, ["Hello ", "world", ".", "Item", " two"])
+        # Los espacios adyacentes a placeholders se transfieren a los placeholders.
+        self.assertEqual(plain, ["Hello", "world", ".", "Item", "two"])
         self.assertEqual(len(info), 2)
-        self.assertEqual(info[0], [(None, 0), ("{ph0}", -1), (None, 1), ("{ph0}", -1), (None, 2)])
-        self.assertEqual(info[1], [("{ph1}", -1), (None, 3), ("{ph1}", -1), (None, 4)])
+        self.assertEqual(
+            info[0],
+            [
+                (None, 0, False, False),
+                ("{ph0}", -1, True, False),
+                (None, 1, False, False),
+                ("{ph0}", -1, False, False),
+                (None, 2, False, False),
+            ],
+        )
+        self.assertEqual(
+            info[1],
+            [
+                ("{ph1}", -1, False, False),
+                (None, 3, False, False),
+                ("{ph1}", -1, False, True),
+                (None, 4, False, False),
+            ],
+        )
 
     def test_rebuild_texts_restores_placeholders(self) -> None:
         texts = ["Hello {ph0}world{ph0}."]
         plain, info = _segment_texts(texts)
-        translated = ["Hola ", "mundo", "."]
+        translated = ["Hola", "mundo", "."]
         results = _rebuild_texts(translated, info)
         self.assertEqual(results, ["Hola {ph0}mundo{ph0}."])
+
+    def test_rebuild_texts_preserves_spaces_around_placeholders(self) -> None:
+        texts = ["word {ph0}code{ph0} another"]
+        plain, info = _segment_texts(texts)
+        translated = ["palabra", "código", "otra"]
+        results = _rebuild_texts(translated, info)
+        self.assertEqual(results, ["palabra {ph0}código{ph0} otra"])
 
     def test_apply_glossary_respects_word_boundaries(self) -> None:
         glossary = {"API": "Interfaz de Programación", "web": "red"}

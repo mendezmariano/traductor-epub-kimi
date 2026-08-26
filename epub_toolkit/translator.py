@@ -114,41 +114,66 @@ def _apply_glossary(text: str, glossary: Glossary) -> str:
     return text
 
 
-def _segment_texts(texts: list[str]) -> tuple[list[str], list[list[tuple[str | None, int]]]]:
+def _segment_texts(texts: list[str]) -> tuple[list[str], list[list[tuple[str | None, int, bool, bool]]]]:
     """Divide textos con placeholders en segmentos planos y metadatos.
 
     Devuelve:
-      - plain_segments: lista de segmentos de texto plano (sin placeholders).
+      - plain_segments: lista de segmentos de texto plano (sin placeholders ni
+        espacios adyacentes a placeholders).
       - unit_segments: lista paralela a `texts`; cada elemento es una lista de
-        (placeholder_id, index_in_plain_segments). Si placeholder_id es None,
-        el segmento plano está en plain_segments[index].
+        tuplas (placeholder_id, index_in_plain_segments, left_space, right_space).
+        Si placeholder_id es None, el segmento plano está en plain_segments[index].
+        left_space/right_space indican si debe haber un espacio a los lados de
+        un placeholder, de modo que el reconstructor lo coloque fuera del tag.
     """
     plain_segments: list[str] = []
-    unit_segments: list[list[tuple[str | None, int]]] = []
+    unit_segments: list[list[tuple[str | None, int, bool, bool]]] = []
     for text in texts:
-        info: list[tuple[str | None, int]] = []
+        info: list[tuple[str | None, int, bool, bool]] = []
         for part, ph in split_text_with_placeholders(text):
+            leading = bool(part) and part[0].isspace()
+            trailing = bool(part) and part[-1].isspace()
+            cleaned = part.strip()
             if ph is None:
                 idx = len(plain_segments)
-                plain_segments.append(part)
-                info.append((None, idx))
+                plain_segments.append(cleaned)
+                info.append((None, idx, leading, trailing))
             else:
-                info.append((ph, -1))
+                info.append((ph, -1, leading, trailing))
+
+        # Transferir espacios de segmentos planos a placeholders adyacentes,
+        # para que los espacios se reconstruyan fuera del tag inline.
+        for i in range(len(info)):
+            ph, idx, leading, trailing = info[i]
+            if ph is None:
+                if leading and i > 0 and info[i - 1][0] is not None:
+                    prev = info[i - 1]
+                    info[i - 1] = (prev[0], prev[1], prev[2], True)
+                    info[i] = (ph, idx, False, trailing)
+                    leading = False
+                if trailing and i < len(info) - 1 and info[i + 1][0] is not None:
+                    nxt = info[i + 1]
+                    info[i + 1] = (nxt[0], nxt[1], True, nxt[3])
+                    info[i] = (ph, idx, leading, False)
         unit_segments.append(info)
     return plain_segments, unit_segments
 
 
 def _rebuild_texts(plain_translated: list[str],
-                   unit_segments: list[list[tuple[str | None, int]]]) -> list[str]:
-    """Reconstruye los textos originales a partir de segmentos traducidos."""
+                   unit_segments: list[list[tuple[str | None, int, bool, bool]]]) -> list[str]:
+    """Reconstruye los textos a partir de segmentos traducidos y metadatos."""
     results: list[str] = []
     for info in unit_segments:
         parts: list[str] = []
-        for ph, idx in info:
+        for ph, idx, left_space, right_space in info:
+            if left_space:
+                parts.append(" ")
             if ph is None:
                 parts.append(plain_translated[idx])
             else:
                 parts.append(ph)
+            if right_space:
+                parts.append(" ")
         results.append("".join(parts))
     return results
 
