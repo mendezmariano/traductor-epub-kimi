@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import re
 import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 import warnings
 from pathlib import Path
 from typing import Any
@@ -459,6 +462,45 @@ class DryRunTestCase(unittest.TestCase):
             with open(units_path, "r", encoding="utf-8") as f:
                 saved = json.load(f)
             self.assertIsNone(saved["files"]["xhtml/ch1.xhtml"]["units"][0]["translation"])
+
+
+class ProgressBarTestCase(unittest.TestCase):
+    """Pruebas del progreso visual con fallback a texto plano."""
+
+    def _sample_document(self) -> ExtractedDocument:
+        unit = TranslationUnit(
+            unit_id="u1", xpath="//p[1]",
+            original="Hello world.", placeholders={},
+        )
+        return ExtractedDocument(
+            source_epub="test.epub",
+            language="en",
+            files={"xhtml/ch1.xhtml": ExtractedFile(path="xhtml/ch1.xhtml",
+                                                    units=[unit],
+                                                    context_title="Chapter 1")},
+        )
+
+    def test_progress_false_produces_no_output(self) -> None:
+        document = self._sample_document()
+        translator = DummyTranslator(expansion=1.0)
+
+        with io.StringIO() as buf:
+            with contextlib.redirect_stdout(buf):
+                translate_document(translator, document, progress=False)
+            self.assertEqual(buf.getvalue().strip(), "")
+
+    def test_text_fallback_when_tqdm_missing(self) -> None:
+        document = self._sample_document()
+        translator = DummyTranslator(expansion=1.0)
+
+        with unittest.mock.patch("importlib.util.find_spec", return_value=None):
+            with io.StringIO() as buf:
+                with contextlib.redirect_stdout(buf):
+                    translate_document(translator, document, progress=True)
+                output = buf.getvalue()
+
+        self.assertIn("[1/1]", output)
+        self.assertIn("u1", output)
 
 
 if __name__ == "__main__":
