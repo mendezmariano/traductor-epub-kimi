@@ -18,6 +18,7 @@ import re
 import time
 import urllib.error
 import urllib.request
+import warnings
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -102,9 +103,33 @@ def _clean_translated_text(text: str) -> str:
     return re.sub(r"[ \t]+", " ", text).strip()
 
 
+def _collect_placeholder_ids(text: str) -> set[str]:
+    """Devuelve el conjunto de placeholders {phN} presentes en un texto."""
+    return set(_PLACEHOLDER_RE.findall(text))
+
+
+def _validate_translated_texts(originals: list[str],
+                               translations: list[str]) -> list[str | None]:
+    """Verifica que cada traducción conserve los placeholders del original.
+
+    Devuelve una lista del mismo tamaño que `translations`: el texto validado
+    si los placeholders coinciden, o `None` si se detectó una pérdida.
+    """
+    validated: list[str | None] = []
+    for original, translation in zip(originals, translations):
+        original_ids = _collect_placeholder_ids(original)
+        translated_ids = _collect_placeholder_ids(translation)
+        if original_ids and original_ids != translated_ids:
+            validated.append(None)
+        else:
+            validated.append(translation)
+    return validated
+
+
 def _system_prompt(source_lang: str, target_lang: str,
                    expansion_hint: float | None = None,
-                   glossary: Glossary | None = None) -> str:
+                   glossary: Glossary | None = None,
+                   strict: bool = False) -> str:
     """Prompt de sistema para traductores basados en LLM."""
     expansion = ""
     if expansion_hint and expansion_hint > 1.0:
@@ -115,22 +140,30 @@ def _system_prompt(source_lang: str, target_lang: str,
             " contenido."
         )
     glossary_text = _format_glossary(glossary or {})
+    strict_clause = (
+        " Es CRÍTICO que conserves TODOS los marcadores ___PHN___ exactamente"
+        " como aparecen en el texto. Si omites alguno, la traducción será"
+        " inválida."
+        if strict
+        else ""
+    )
     return (
         f"Eres un traductor profesional. Traduce el texto del {source_lang} al"
         f" {target_lang}. NO traduzcas ni modifiques los marcadores de la forma"
         f" {{ph0}}, {{ph1}}, etc. ni ___PH0___, ___PH1___, etc. ni"
         f" ___GLS0___, ___GLS1___, etc. Conserva la puntuación, el formato y"
-        f" los espacios.{expansion}{glossary_text} Responde ÚNICAMENTE con la"
-        " traducción, sin explicaciones ni markdown."
+        f" los espacios.{expansion}{glossary_text}{strict_clause} Responde"
+        " ÚNICAMENTE con la traducción, sin explicaciones ni markdown."
     )
 
 
 def _batch_prompt(texts: list[str], source_lang: str, target_lang: str,
                   context_title: str = "",
                   expansion_hint: float | None = None,
-                  glossary: Glossary | None = None) -> str:
+                  glossary: Glossary | None = None,
+                  strict: bool = False) -> str:
     """Prompt para traducir un lote de textos numerados."""
-    base = _system_prompt(source_lang, target_lang, expansion_hint, glossary)
+    base = _system_prompt(source_lang, target_lang, expansion_hint, glossary, strict)
     context = f"\nContexto: capítulo/sección '{context_title}'." if context_title else ""
     lines = "\n".join(f"{i}. {t}" for i, t in enumerate(texts, 1))
     return (
@@ -183,6 +216,78 @@ def translate_unit(translator: Translator, unit: TranslationUnit,
     return results[0] if results else unit.original
 
 
+def _translate_and_validate(translator: Translator,
+                            protected_texts: list[str],
+                            originals: list[str],
+                            ph_mappings: list[dict[str, str]],
+                            glossary_mappings: list[dict[str, str]],
+                            source_lang: str, target_lang: str,
+                            context_title: str,
+                            labels: list[str],
+                            strict_retry: bool = True) -> list[str]:
+    """Traduce un lote, valida placeholders y aplica fallback si es necesario.
+
+    `labels` se usa únicamente para emitir advertencias identificables.
+    """
+    try:
+        translated = translator.translate_batch(
+            protected_texts, source_lang, target_lang,
+            context_title=context_title,
+        )
+    except NotImplementedError:
+        translated = _translate_batch_fallback(
+            translator, protected_texts, source_lang, target_lang
+        )
+
+    if len(translated) != len(originals):
+        raise RuntimeError(
+            f"El traductor devolvió {len(translated)} textos para"
+            f" {len(originals)} textos"
+        )
+
+    restored = [
+        _restore_glossary(_restore_placeholders(t, ph_map), glossary_map)
+        for t, ph_map, glossary_map in zip(translated, ph_mappings, glossary_mappings)
+    ]
+    validated = _validate_translated_texts(originals, restored)
+
+    results: list[str] = []
+    for idx, valid in enumerate(validated):
+        if valid is not None:
+            results.append(_clean_translated_text(valid))
+            continue
+
+        missing = _collect_placeholder_ids(originals[idx]) - _collect_placeholder_ids(restored[idx])
+        if strict_retry:
+            try:
+                retry = translator.translate_batch(
+                    [protected_texts[idx]], source_lang, target_lang,
+                    context_title=context_title,
+                    strict=True,
+                )[0]
+            except NotImplementedError:
+                retry = translator.translate(
+                    protected_texts[idx], source_lang, target_lang
+                )
+            retry_restored = _restore_glossary(
+                _restore_placeholders(retry, ph_mappings[idx]),
+                glossary_mappings[idx],
+            )
+            if _collect_placeholder_ids(originals[idx]) == _collect_placeholder_ids(retry_restored):
+                results.append(_clean_translated_text(retry_restored))
+                continue
+
+        warnings.warn(
+            f"Placeholder(s) {missing} perdido(s) en {labels[idx]};"
+            f" se conserva el texto original.",
+            UserWarning,
+            stacklevel=3,
+        )
+        results.append(_clean_translated_text(originals[idx]))
+
+    return results
+
+
 def translate_batch_for_file(translator: Translator, file: ExtractedFile,
                              source_lang: str, target_lang: str,
                              glossary: Glossary | None = None) -> list[str]:
@@ -194,6 +299,8 @@ def translate_batch_for_file(translator: Translator, file: ExtractedFile,
     protected_texts: list[str] = []
     ph_mappings: list[dict[str, str]] = []
     glossary_mappings: list[dict[str, str]] = []
+    originals: list[str] = []
+    labels: list[str] = []
     for unit in units:
         # 1. Proteger términos del glosario (texto original -> marcador).
         text, glossary_mapping = _protect_glossary(unit.original, glossary or {})
@@ -202,29 +309,13 @@ def translate_batch_for_file(translator: Translator, file: ExtractedFile,
         protected_texts.append(protected)
         ph_mappings.append(ph_mapping)
         glossary_mappings.append(glossary_mapping)
+        originals.append(unit.original)
+        labels.append(f"{file.path}::{unit.unit_id}")
 
-    try:
-        translated = translator.translate_batch(
-            protected_texts, source_lang, target_lang,
-            context_title=file.context_title,
-        )
-    except NotImplementedError:
-        translated = _translate_batch_fallback(
-            translator, protected_texts, source_lang, target_lang
-        )
-
-    if len(translated) != len(units):
-        raise RuntimeError(
-            f"El traductor devolvió {len(translated)} textos para"
-            f" {len(units)} unidades en {file.path}"
-        )
-
-    results: list[str] = []
-    for t, ph_map, glossary_map in zip(translated, ph_mappings, glossary_mappings):
-        text = _restore_placeholders(t, ph_map)
-        text = _restore_glossary(text, glossary_map)
-        results.append(_clean_translated_text(text))
-    return results
+    return _translate_and_validate(
+        translator, protected_texts, originals, ph_mappings, glossary_mappings,
+        source_lang, target_lang, file.context_title, labels,
+    )
 
 
 def _translate_attrs_for_file(translator: Translator, file: ExtractedFile,
@@ -235,37 +326,33 @@ def _translate_attrs_for_file(translator: Translator, file: ExtractedFile,
 
     attr_entries: list[tuple[TranslationUnit, str, str, dict[str, str], dict[str, str]]] = []
     attr_texts: list[str] = []
+    attr_originals: list[str] = []
+    attr_ph_mappings: list[dict[str, str]] = []
+    attr_glossary_mappings: list[dict[str, str]] = []
+    attr_labels: list[str] = []
     for unit in units:
         for key, attrs in unit.translatable_attrs.items():
             for attr_name, attr_value in attrs.items():
                 text, glossary_mapping = _protect_glossary(attr_value, glossary or {})
                 protected, ph_mapping = _protect_placeholders(text)
                 attr_texts.append(protected)
-                attr_entries.append((unit, key, attr_name, ph_mapping, glossary_mapping))
+                attr_entries.append((unit, key, attr_name))
+                attr_originals.append(attr_value)
+                attr_ph_mappings.append(ph_mapping)
+                attr_glossary_mappings.append(glossary_mapping)
+                attr_labels.append(f"{file.path}::{unit.unit_id}@{key}.{attr_name}")
 
     if not attr_texts:
         return
 
     context = f"Atributos HTML de {file.context_title}" if file.context_title else "Atributos HTML"
-    try:
-        translated = translator.translate_batch(
-            attr_texts, source_lang, target_lang, context_title=context,
-        )
-    except NotImplementedError:
-        translated = _translate_batch_fallback(
-            translator, attr_texts, source_lang, target_lang
-        )
+    translated = _translate_and_validate(
+        translator, attr_texts, attr_originals, attr_ph_mappings,
+        attr_glossary_mappings, source_lang, target_lang, context, attr_labels,
+    )
 
-    if len(translated) != len(attr_texts):
-        raise RuntimeError(
-            f"El traductor devolvió {len(translated)} atributos para"
-            f" {len(attr_texts)} atributos en {file.path}"
-        )
-
-    for (unit, key, attr_name, ph_map, glossary_map), t in zip(attr_entries, translated):
-        text = _restore_placeholders(t, ph_map)
-        text = _restore_glossary(text, glossary_map)
-        unit.translated_attrs.setdefault(key, {})[attr_name] = _clean_translated_text(text)
+    for (unit, key, attr_name), text in zip(attr_entries, translated):
+        unit.translated_attrs.setdefault(key, {})[attr_name] = text
 
 
 def translate_document(translator: Translator, document: ExtractedDocument,
@@ -307,7 +394,8 @@ class Translator(ABC):
 
     def translate_batch(self, texts: list[str], source_lang: str, target_lang: str,
                         context_title: str = "",
-                        glossary: Glossary | None = None) -> list[str]:
+                        glossary: Glossary | None = None,
+                        **kwargs: Any) -> list[str]:
         """Traduce un lote de textos.
 
         Los motores pueden sobreescribir este método para enviar lotes a la API.
@@ -331,7 +419,8 @@ class DummyTranslator(Translator):
 
     def translate_batch(self, texts: list[str], source_lang: str, target_lang: str,
                         context_title: str = "",
-                        glossary: Glossary | None = None) -> list[str]:
+                        glossary: Glossary | None = None,
+                        **kwargs: Any) -> list[str]:
         return [self.translate(t, source_lang, target_lang) for t in texts]
 
 
@@ -355,7 +444,8 @@ class LibreTranslateTranslator(Translator):
 
     def translate_batch(self, texts: list[str], source_lang: str, target_lang: str,
                         context_title: str = "",
-                        glossary: Glossary | None = None) -> list[str]:
+                        glossary: Glossary | None = None,
+                        **kwargs: Any) -> list[str]:
         # LibreTranslate no usa directamente el glosario; los términos ya se
         # protegen con marcadores ___GLS___ en translate_batch_for_file.
         return self._translate_batch(texts, source_lang, target_lang)
@@ -416,18 +506,20 @@ class OpenAICompatibleTranslator(Translator):
 
     def translate_batch(self, texts: list[str], source_lang: str, target_lang: str,
                         context_title: str = "",
-                        glossary: Glossary | None = None) -> list[str]:
+                        glossary: Glossary | None = None,
+                        **kwargs: Any) -> list[str]:
         if not texts:
             return []
+        strict = kwargs.get("strict", False)
         prompt = _batch_prompt(
-            texts, source_lang, target_lang, context_title, self.expansion_hint, glossary
+            texts, source_lang, target_lang, context_title, self.expansion_hint, glossary, strict
         )
         url = f"{self.base_url}/chat/completions"
         payload = {
             "model": self.model,
             "temperature": self.temperature,
             "messages": [
-                {"role": "system", "content": _system_prompt(source_lang, target_lang, self.expansion_hint, glossary)},
+                {"role": "system", "content": _system_prompt(source_lang, target_lang, self.expansion_hint, glossary, strict)},
                 {"role": "user", "content": prompt},
             ],
         }
@@ -472,11 +564,13 @@ class OllamaTranslator(Translator):
 
     def translate_batch(self, texts: list[str], source_lang: str, target_lang: str,
                         context_title: str = "",
-                        glossary: Glossary | None = None) -> list[str]:
+                        glossary: Glossary | None = None,
+                        **kwargs: Any) -> list[str]:
         if not texts:
             return []
+        strict = kwargs.get("strict", False)
         prompt = _batch_prompt(
-            texts, source_lang, target_lang, context_title, self.expansion_hint, glossary
+            texts, source_lang, target_lang, context_title, self.expansion_hint, glossary, strict
         )
         url = f"{self.base_url}/api/generate"
         payload = {

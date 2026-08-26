@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
 import unittest
+import warnings
+from typing import Any
 
 from epub_toolkit.models import ExtractedDocument, ExtractedFile, Placeholder, TranslationUnit
 from epub_toolkit.translator import (
@@ -10,6 +13,7 @@ from epub_toolkit.translator import (
     OllamaTranslator,
     OpenAICompatibleTranslator,
     OpenAITranslator,
+    Translator,
     _batch_prompt,
     _format_glossary,
     _parse_numbered_translations,
@@ -280,6 +284,110 @@ class GlossaryTestCase(unittest.TestCase):
         prompt = _system_prompt("en", "es", glossary={"prompt": "instrucción"})
         self.assertIn("prompt -> instrucción", prompt)
         self.assertIn("___GLS0___", prompt)
+
+
+class PlaceholderEatingTranslator(Translator):
+    """Mock que pierde placeholders protegidos; opcionalmente los conserva en modo strict."""
+
+    def __init__(self, fix_on_strict: bool = False) -> None:
+        self.fix_on_strict = fix_on_strict
+
+    def translate(self, text: str, source_lang: str, target_lang: str) -> str:
+        return re.sub(r"___PH\d+___", "", text)
+
+    def translate_batch(self, texts: list[str], source_lang: str, target_lang: str,
+                        context_title: str = "",
+                        glossary: dict[str, str] | None = None,
+                        **kwargs: Any) -> list[str]:
+        if kwargs.get("strict") and self.fix_on_strict:
+            return [t for t in texts]
+        return [re.sub(r"___PH\d+___", "", t) for t in texts]
+
+
+class PlaceholderValidationTestCase(unittest.TestCase):
+    """Verifica la validación de placeholders y el fallback ante respuestas de LLM."""
+
+    def _unit_with_placeholder(self) -> TranslationUnit:
+        return TranslationUnit(
+            unit_id="u1",
+            xpath="//p[1]",
+            original="Hello {ph0}world{ph0}.",
+            placeholders={"{ph0}": {"tag": "b", "attrs": {}, "self_closing": False}},
+        )
+
+    def test_validation_recovers_on_strict_retry(self) -> None:
+        unit = self._unit_with_placeholder()
+        file = ExtractedFile(path="xhtml/ch1.xhtml", units=[unit],
+                             context_title="Chapter 1")
+        translator = PlaceholderEatingTranslator(fix_on_strict=True)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = translate_batch_for_file(translator, file, "en", "es")
+
+        self.assertIn("{ph0}", result[0])
+        self.assertFalse(
+            any("perdido" in str(w.message) for w in caught),
+            "No debería haber advertencia cuando el reintento strict funciona",
+        )
+
+    def test_validation_warns_and_falls_back_to_original(self) -> None:
+        unit = self._unit_with_placeholder()
+        file = ExtractedFile(path="xhtml/ch1.xhtml", units=[unit],
+                             context_title="Chapter 1")
+        translator = PlaceholderEatingTranslator(fix_on_strict=False)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = translate_batch_for_file(translator, file, "en", "es")
+
+        self.assertEqual(result[0], unit.original)
+        self.assertTrue(
+            any("perdido" in str(w.message) for w in caught),
+            "Debería emitirse advertencia de placeholder perdido",
+        )
+
+    def test_validation_passes_when_placeholders_ok(self) -> None:
+        unit = self._unit_with_placeholder()
+        file = ExtractedFile(path="xhtml/ch1.xhtml", units=[unit],
+                             context_title="Chapter 1")
+        translator = DummyTranslator(expansion=1.0)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = translate_batch_for_file(translator, file, "en", "es")
+
+        self.assertIn("{ph0}", result[0])
+        self.assertFalse(caught)
+
+    def test_attr_validation_warns_and_falls_back(self) -> None:
+        unit = TranslationUnit(
+            unit_id="u1",
+            xpath="//p[1]",
+            original="Hello world.",
+            placeholders={},
+            translatable_attrs={"self": {"title": "A {ph0}bold{ph0} greeting"}},
+        )
+        file = ExtractedFile(path="xhtml/ch1.xhtml", units=[unit],
+                             context_title="Chapter 1")
+        translator = PlaceholderEatingTranslator(fix_on_strict=False)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            translate_document(translator, ExtractedDocument(
+                source_epub="test.epub",
+                language="en",
+                files={"xhtml/ch1.xhtml": file},
+            ), progress=False)
+
+        self.assertEqual(
+            unit.translated_attrs["self"]["title"],
+            unit.translatable_attrs["self"]["title"],
+        )
+        self.assertTrue(
+            any("perdido" in str(w.message) for w in caught),
+            "Debería advertir placeholder perdido en atributo",
+        )
 
 
 if __name__ == "__main__":
