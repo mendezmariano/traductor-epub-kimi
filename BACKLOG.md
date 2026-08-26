@@ -6,7 +6,7 @@
 
 | Estado | Cantidad |
 |--------|----------|
-| Completado | 15 |
+| Completado | 16 |
 | En progreso | 0 |
 | Por hacer | 0 |
 
@@ -35,13 +35,22 @@
   - EPUB-012: https://github.com/mendezmariano/traductor-epub-kimi/pull/3
   - EPUB-011: https://github.com/mendezmariano/traductor-epub-kimi/pull/4
   - EPUB-016: https://github.com/mendezmariano/traductor-epub-kimi/pull/5
-- **Última verificación de tests:** 47+ tests OK en cada rama.
+- **Última verificación de tests:** 58 tests OK en `master`.
 
 ## Cómo continuar
 
 1. Revisar y mergear los PRs #2 a #5.
 2. Ejecutar tests en `master`: `python3 -m unittest discover tests -v`.
 3. Actualizar `STATUS.md` después del merge.
+
+### Nota del trabajo ad-hoc (agentes/skills y segmentación LibreTranslate)
+
+- Se crearon `AGENTS.md`, `.agents/*.md` y `skills/*.md` para estandarizar el trabajo de Kimi Code en el proyecto.
+- Se detectó que LibreTranslate destruye los marcadores `___PHN___`, dejando sin traducir las unidades con tags inline.
+- Se implementó traducción segmentada en `epub_toolkit/translator.py`: separa texto plano y placeholders, traduce los segmentos planos en lotes y reconstruye la unidad conservando el marcado.
+- Se añadieron tests de segmentación y de glosario directo.
+- Se tradujo `libros/Developer.epub` con LibreTranslate local; resultado en `output/Developer_es.epub`.
+- Commit/push a `master`: `f8acb54`.
 
 ### Nota de la entrega 1
 
@@ -343,6 +352,9 @@ Base sólida para cualquier manipulación futura del EPUB. Permite traducir sin 
 
 - [x] **EPUB-016** — Integración continua (GitHub Actions)  
   PR #5 — Workflow CI en Python 3.12.
+
+- [x] **Agentes/skills de Kimi Code + segmentación LibreTranslate**  
+  `commit: f8acb54` — Creados roles y skills para Kimi Code; implementada traducción segmentada en LibreTranslate para preservar placeholders; traducido `Developer.epub` a `output/Developer_es.epub`.
 
 ---
 

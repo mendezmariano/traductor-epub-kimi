@@ -31,6 +31,7 @@ master
 | 6 | EPUB-012 | Modo dry-run | PR #3 |
 | 7 | EPUB-011 | Barra de progreso visual | PR #4 |
 | 8 | EPUB-016 | Integración continua (GitHub Actions) | PR #5 |
+| — | — | Agentes/skills de Kimi Code y segmentación para LibreTranslate | `f8acb54` |
 
 ## Entregas pendientes
 
@@ -78,7 +79,7 @@ python3 -m unittest discover tests -v
 python3 -m unittest discover tests -v
 ```
 
-Última verificación: **47+ tests OK** en cada rama de entrega.
+Última verificación: **58 tests OK** en `master`.
 
 ## Notas importantes
 
@@ -86,3 +87,4 @@ python3 -m unittest discover tests -v
 - Las entregas 5–8 están en PRs separados (#2 a #5) listos para revisión/merge.
 - Cada rama de entrega pasa `python3 -m unittest discover tests -v`.
 - El workflow `.github/workflows/ci.yml` ejecutará los tests automáticamente en push/PR a `master`/`main`.
+- Commit `f8acb54` agrega agentes/skills de Kimi Code y segmentación para LibreTranslate; traduce `Developer.epub` localmente a `output/Developer_es.epub`.
