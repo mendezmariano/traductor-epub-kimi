@@ -359,6 +359,9 @@ Base sólida para cualquier manipulación futura del EPUB. Permite traducir sin 
 - [x] **Fix de espacios alrededor de placeholders en LibreTranslate**  
   `commit: 829cc62` — Conserva espacios entre texto plano y tags inline; evita artefactos como `sonpreentrenamientosobre`; re-traduce `Developer.epub`.
 
+- [x] **Traducción de libros restantes con LibreTranslate**  
+  Traducidos `Dissecting the Dark Web` y `Heavy.epub` a `output/Dissecting_the_Dark_Web_es.epub` y `output/Heavy_es.epub`.
+
 ---
 
 ## Decisiones técnicas
