@@ -138,6 +138,11 @@ t = create_translator("dummy", expansion=1.25)
 translate_document(t, doc, progress=False)
 ```
 
+## Opciones útiles del CLI
+
+- `--dry-run` en `translate` estima el volumen (unidades, caracteres y tokens aproximados) sin traducir ni escribir `translation_units.json`.
+- `--quiet` desactiva el progreso; sin `--quiet`, se usa `tqdm` si está instalado, o progreso textual como fallback.
+
 ## Retomar después de un `/clear`
 
 Si retomas el proyecto sin contexto de conversión previo:
@@ -146,14 +151,14 @@ Si retomas el proyecto sin contexto de conversión previo:
    ```bash
    bash scripts/resume.sh
    ```
-2. Revisa [`STATUS.md`](../STATUS.md) para conocer la rama activa, el PR abierto y la entrega pendiente.
+2. Revisa [`STATUS.md`](../STATUS.md) para conocer la rama activa, los PRs abiertos y la entrega pendiente.
 3. Revisa [`BACKLOG.md`](../BACKLOG.md) para ver el plan de entregas y el detalle de cada una.
 4. Asegúrate de estar en la rama correcta:
    ```bash
    git status
    git branch
    ```
-5. Continúa con la entrega marcada como `READY` en el backlog (actualmente **EPUB-014 — Validación de respuestas de LLM**).
+5. Si hay entregas `READY`, continúa con la primera; de lo contrario, revisa/mergea los PRs abiertos.
 
 ## Contribuciones
 
