@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import re
+import subprocess
+import sys
+import tempfile
 import unittest
 import warnings
+from pathlib import Path
 from typing import Any
 
 from epub_toolkit.models import ExtractedDocument, ExtractedFile, Placeholder, TranslationUnit
@@ -21,6 +26,7 @@ from epub_toolkit.translator import (
     _restore_glossary,
     _system_prompt,
     create_translator,
+    estimate_document,
     translate_batch_for_file,
     translate_document,
     translate_unit,
@@ -388,6 +394,71 @@ class PlaceholderValidationTestCase(unittest.TestCase):
             any("perdido" in str(w.message) for w in caught),
             "Debería advertir placeholder perdido en atributo",
         )
+
+
+class DryRunTestCase(unittest.TestCase):
+    """Pruebas del modo dry-run y la estimación de volumen."""
+
+    def test_estimate_document_counts_units_and_attrs(self) -> None:
+        unit = TranslationUnit(
+            unit_id="u1",
+            xpath="//p[1]",
+            original="Hello world.",
+            placeholders={},
+            translatable_attrs={"self": {"title": "Greeting", "alt": "Photo"}},
+        )
+        document = ExtractedDocument(
+            source_epub="test.epub",
+            language="en",
+            files={"xhtml/ch1.xhtml": ExtractedFile(path="xhtml/ch1.xhtml",
+                                                    units=[unit],
+                                                    context_title="Chapter 1")},
+        )
+        estimate = estimate_document(document)
+        self.assertEqual(estimate["total_units"], 1)
+        # "Hello world." (12) + "Greeting" (8) + "Photo" (5) = 25
+        self.assertEqual(estimate["total_chars"], 25)
+        self.assertEqual(estimate["estimated_tokens"], 25 // 4)
+        self.assertEqual(len(estimate["files"]), 1)
+        self.assertEqual(estimate["files"][0]["chars"], 25)
+
+    def test_dry_run_cli_does_not_translate(self) -> None:
+        unit = TranslationUnit(
+            unit_id="u1",
+            xpath="//p[1]",
+            original="Hello world.",
+            placeholders={},
+        )
+        document = ExtractedDocument(
+            source_epub="test.epub",
+            language="en",
+            files={"xhtml/ch1.xhtml": ExtractedFile(path="xhtml/ch1.xhtml",
+                                                    units=[unit],
+                                                    context_title="Chapter 1")},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp) / "work"
+            work_dir.mkdir()
+            units_path = work_dir / "translation_units.json"
+            with open(units_path, "w", encoding="utf-8") as f:
+                json.dump(document.to_dict(), f, ensure_ascii=False, indent=2)
+
+            result = subprocess.run(
+                [sys.executable, "main.py", "translate", str(work_dir),
+                 "--engine", "dummy", "--dry-run"],
+                capture_output=True,
+                text=True,
+                cwd=str(Path(__file__).resolve().parent.parent),
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertIn("Dry-run", result.stdout)
+            self.assertIn("Unidades traducibles: 1", result.stdout)
+            self.assertIn("Tokens estimados", result.stdout)
+
+            # El archivo de unidades no debe haberse modificado (sigue sin traducción).
+            with open(units_path, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+            self.assertIsNone(saved["files"]["xhtml/ch1.xhtml"]["units"][0]["translation"])
 
 
 if __name__ == "__main__":
