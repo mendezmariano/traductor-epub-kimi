@@ -268,6 +268,37 @@ def _translate_attrs_for_file(translator: Translator, file: ExtractedFile,
         unit.translated_attrs.setdefault(key, {})[attr_name] = _clean_translated_text(text)
 
 
+def estimate_document(document: ExtractedDocument) -> dict[str, Any]:
+    """Estima el volumen de traducción de un documento sin traducirlo.
+
+    Devuelve un diccionario con:
+    - total_units: número de unidades traducibles.
+    - total_chars: caracteres totales a traducir (texto + atributos).
+    - estimated_tokens: estimación aproximada de tokens (chars // 4).
+    - files: lista de resúmenes por archivo.
+    """
+    files: list[dict[str, Any]] = []
+    total_units = 0
+    total_chars = 0
+
+    for path, extracted_file in document.files.items():
+        units = [u for u in extracted_file.units if u.translatable]
+        chars = sum(len(u.original) for u in units)
+        for u in units:
+            for attrs in u.translatable_attrs.values():
+                chars += sum(len(v) for v in attrs.values())
+        files.append({"path": path, "units": len(units), "chars": chars})
+        total_units += len(units)
+        total_chars += chars
+
+    return {
+        "total_units": total_units,
+        "total_chars": total_chars,
+        "estimated_tokens": total_chars // 4,
+        "files": files,
+    }
+
+
 def translate_document(translator: Translator, document: ExtractedDocument,
                        source_lang: str = "en", target_lang: str = "es",
                        progress: bool = True,

@@ -12,7 +12,7 @@ from epub_toolkit.deconstructor import Deconstructor
 from epub_toolkit.extractor import Extractor
 from epub_toolkit.models import ExtractedDocument
 from epub_toolkit.reconstructor import Reconstructor
-from epub_toolkit.translator import create_translator, translate_document
+from epub_toolkit.translator import create_translator, estimate_document, translate_document
 
 
 def cmd_deconstruct(args: argparse.Namespace) -> int:
@@ -110,6 +110,18 @@ def cmd_translate(args: argparse.Namespace) -> int:
     print(f"Traduciendo con motor '{args.engine}' ({args.source} -> {args.target})...")
     if glossary:
         print(f"Usando glosario con {len(glossary)} términos.")
+
+    if args.dry_run:
+        estimate = estimate_document(document)
+        print("\nDry-run: no se traduce ni se guarda el resultado.")
+        print(f"  Unidades traducibles: {estimate['total_units']}")
+        print(f"  Caracteres totales:   {estimate['total_chars']}")
+        print(f"  Tokens estimados:     {estimate['estimated_tokens']}")
+        print("\nDesglose por archivo:")
+        for f in estimate["files"]:
+            print(f"  {f['path']}: {f['units']} unidades, {f['chars']} caracteres")
+        return 0
+
     translate_document(translator, document, source_lang=args.source,
                        target_lang=args.target, progress=not args.quiet,
                        glossary=glossary)
@@ -166,6 +178,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="Ruta a un JSON con pares 'término': 'traducción'.")
     tr.add_argument("--quiet", action="store_true",
                     help="No mostrar progreso.")
+    tr.add_argument("--dry-run", action="store_true",
+                    help="Solo estima volumen; no traduce ni escribe units.")
     tr.set_defaults(func=cmd_translate)
 
     args = parser.parse_args(argv)
