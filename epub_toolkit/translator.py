@@ -13,6 +13,7 @@ llamadas a la API.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import time
@@ -395,24 +396,36 @@ def translate_document(translator: Translator, document: ExtractedDocument,
     total_units = sum(len([u for u in f.units if u.translatable]) for f in files)
     processed = 0
 
-    for extracted_file in files:
-        units = [u for u in extracted_file.units if u.translatable]
-        if not units:
-            continue
+    tqdm_available = progress and importlib.util.find_spec("tqdm") is not None
+    pbar: Any | None = None
+    if tqdm_available:
+        from tqdm import tqdm
+        pbar = tqdm(total=total_units, desc="Traduciendo unidades", unit="unidad")
 
-        translations = translate_batch_for_file(
-            translator, extracted_file, source_lang, target_lang, glossary
-        )
+    try:
+        for extracted_file in files:
+            units = [u for u in extracted_file.units if u.translatable]
+            if not units:
+                continue
 
-        for unit, translation in zip(units, translations):
-            unit.translation = translation
-            processed += 1
-            if progress:
-                print(f"  [{processed}/{total_units}] {unit.unit_id} ({extracted_file.path})")
+            translations = translate_batch_for_file(
+                translator, extracted_file, source_lang, target_lang, glossary
+            )
 
-        _translate_attrs_for_file(
-            translator, extracted_file, source_lang, target_lang, glossary
-        )
+            for unit, translation in zip(units, translations):
+                unit.translation = translation
+                processed += 1
+                if pbar is not None:
+                    pbar.update(1)
+                elif progress:
+                    print(f"  [{processed}/{total_units}] {unit.unit_id} ({extracted_file.path})")
+
+            _translate_attrs_for_file(
+                translator, extracted_file, source_lang, target_lang, glossary
+            )
+    finally:
+        if pbar is not None:
+            pbar.close()
 
 
 class Translator(ABC):
