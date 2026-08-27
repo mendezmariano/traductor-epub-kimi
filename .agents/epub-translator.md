@@ -19,19 +19,19 @@ Para traducir un libro con LibreTranslate local:
 ```bash
 # 1. Levantar servidor LibreTranslate
 source .venv/bin/activate
-libretranslate --host 127.0.0.1 --port 5000 &
+libretranslate --host 127.0.0.1 --port 5001 &
 
 # 2. Descomponer
 python3 main.py deconstruct libros/Developer.epub --output output/Developer
 
 # 3. Estimar volumen (opcional)
 python3 main.py translate output/Developer --engine libretranslate \
-  --base-url http://127.0.0.1:5000 --source en --target es --dry-run
+  --base-url http://127.0.0.1:5001 --source en --target es --dry-run
 
-# 4. Traducir
+# 4. Traducir (con glosario técnico opcional)
 python3 main.py translate output/Developer --engine libretranslate \
-  --base-url http://127.0.0.1:5000 --source en --target es \
-  --delay 0.1 --retries 3
+  --base-url http://127.0.0.1:5001 --source en --target es \
+  --glossary output/glossary.json --delay 0.1 --retries 3
 
 # 5. Reconstruir
 python3 main.py reconstruct output/Developer --output output/Developer_es.epub --language es
@@ -50,10 +50,12 @@ python3 -m unittest tests.test_roundtrip -v
 
 ## Diagnóstico común
 
-- **Placeholders perdidos:** revisa `epub_toolkit/translator.py`, `_validate_translated_texts` y el modo estricto.
+- **Placeholders perdidos:** `LibreTranslateTranslator` usa `segment_placeholders=True`, por lo que el pipeline separa texto plano y placeholders antes de enviarlos. Si aparecen advertencias de placeholders perdidos, revisa `_translate_batch_for_file_segmented` y `_rebuild_texts`.
+- **Términos técnicos mal traducidos dentro de tags inline (`<i>pretrained</i>`):** el glosario se aplica a los segmentos planos ANTES de llamar al servicio. Verifica `_apply_glossary` en `_translate_batch_for_file_segmented` y `_translate_attrs_for_file`.
+- **Espacios perdidos alrededor de placeholders (`sonpreentrenamientosobre`):** revisa `_segment_texts` y `_rebuild_texts`; los espacios se transfieren a los extremos de los placeholders para reconstruirlos fuera del tag inline.
 - **Marcado roto:** revisa `epub_toolkit/reconstructor.py`, `_build_element`.
 - **Texto no extraído:** revisa `epub_toolkit/extractor.py`, `BLOCK_TAGS`/`SKIPPED_TAGS`.
-- **Error de conexión con LibreTranslate:** verifica que el servidor esté levantado y que `--base-url` sea correcto.
+- **Error de conexión con LibreTranslate:** verifica que el servidor esté levantado en `127.0.0.1:5001` y que `--base-url` sea correcto.
 
 ## Documentación de referencia
 

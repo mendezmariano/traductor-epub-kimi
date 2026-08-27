@@ -156,3 +156,18 @@ Este documento registra las decisiones técnicas y de diseño tomadas en el proy
 **Consecuencias:**
 - No se requiere un modelo explícito del DOM completo ni de las CSS.
 - Cualquier manipulación futura debe limitarse a modificar XHTML ya extraídos.
+
+---
+
+## DEC-012: Segmentación de texto plano para LibreTranslate
+
+**Decisión:** Para `LibreTranslateTranslator`, separar el texto plano de los placeholders antes de enviarlo al servicio, traducir los segmentos planos y reconstruir la unidad conservando los placeholders originales.
+
+**Motivación:**
+- LibreTranslate modifica o elimina los marcadores `___PHN___`, lo que provocaba que el sistema conservara el texto original.
+- Al no enviar los marcadores, el servicio solo recibe texto plano y no puede alterar el marcado inline.
+
+**Consecuencias:**
+- Se implementan `_segment_texts`, `_translate_plain_segments` y `_rebuild_texts` en `epub_toolkit/translator.py`.
+- Los espacios alrededor de placeholders se reconstruyen fuera de los tags inline, evitando artefactos como `sonpreentrenamientosobre`.
+- El glosario se aplica a los segmentos planos antes de la traducción, corrigiendo términos técnicos dentro de tags inline.

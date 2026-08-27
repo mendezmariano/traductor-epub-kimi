@@ -49,6 +49,7 @@ El proyecto incluye roles y skills para que Kimi Code trabaje de forma consisten
 - [`.agents/quality-reviewer.md`](.agents/quality-reviewer.md) — rol de revisión de calidad y tests.
 - [`.agents/release-manager.md`](.agents/release-manager.md) — rol de gestión de releases.
 - [`skills/epub-pipeline.md`](skills/epub-pipeline.md) — skill para ejecutar el pipeline completo.
+- [`skills/glossary.md`](skills/glossary.md) — skill para mantener y usar glosarios técnicos.
 - [`skills/run-tests.md`](skills/run-tests.md) — skill para ejecutar tests.
 - [`skills/create-release.md`](skills/create-release.md) — skill para preparar releases.
 
@@ -57,7 +58,7 @@ El proyecto incluye roles y skills para que Kimi Code trabaje de forma consisten
 - **Rama activa:** `master`
 - **PRs abiertos:** #2, #3, #4, #5 (entregas 5–8)
 - **Entregas completadas:** 8 de 8
-- **Tests:** 47+ tests OK
+- **Tests:** 59 tests OK
 
 Para retomar el proyecto después de un `/clear`, ejecuta:
 
@@ -73,6 +74,7 @@ Ver [`STATUS.md`](STATUS.md) para más detalles.
 - Traducción por lotes agrupada por archivo XHTML para mejorar coherencia y reducir llamadas a API.
 - Soporte de glosarios para términos técnicos consistentes.
 - Preservación de tags inline mediante placeholders numerados.
+- Segmentación de texto plano para LibreTranslate, evitando que el servicio destruya los marcadores de placeholders.
 - Validación de respuestas de LLM: reintento estricto y fallback al original si se pierden placeholders.
 - Modo `--dry-run` para estimar volumen antes de traducir.
 - Barra de progreso visual (`tqdm`) con fallback a texto plano.

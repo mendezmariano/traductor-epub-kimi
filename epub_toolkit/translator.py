@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import string
 import time
 import urllib.error
 import urllib.request
@@ -216,6 +217,77 @@ def _translate_plain_segments(translator: Translator,
 def _clean_translated_text(text: str) -> str:
     """Limpia espacios extra que algunos servicios introducen."""
     return re.sub(r"[ \t]+", " ", text).strip()
+
+
+def _has_space_after_placeholder(text: str, pos: int) -> bool:
+    """Indica si después de un placeholder hay espacio (directo o tras puntuación)."""
+    i = pos
+    while i < len(text) and text[i].isspace():
+        i += 1
+    if i > pos:
+        return True
+    while i < len(text) and text[i] in string.punctuation:
+        i += 1
+    if i < len(text) and text[i].isspace():
+        return True
+    return False
+
+
+def _needs_space_after(text: str, pos: int) -> bool:
+    """Indica si falta un espacio después de la posición dada."""
+    if pos >= len(text):
+        return False
+    i = pos
+    while i < len(text) and text[i].isspace():
+        i += 1
+    if i > pos:
+        return False  # ya hay al menos un espacio
+    if i >= len(text):
+        return False
+    first = text[i]
+    if first.isalnum():
+        return True
+    if first in string.punctuation:
+        i += 1
+        while i < len(text) and text[i] in string.punctuation:
+            i += 1
+        if i < len(text) and text[i].isspace():
+            return False
+        return True
+    return False
+
+
+def _ensure_space_after_closing_placeholders(original: str, translated: str) -> str:
+    """Corrige espacios perdidos después de placeholders de cierre.
+
+    Cuando un placeholder de cierre va seguido de puntuación + espacio en el
+    original, algunos servicios pierden el espacio en la traducción. Esta
+    función reinserta el espacio si detecta que falta.
+    """
+    closing_ends: dict[str, int] = {}
+    counts: dict[str, int] = {}
+    for m in _PLACEHOLDER_RE.finditer(original):
+        ph = m.group(0)
+        counts[ph] = counts.get(ph, 0) + 1
+        if counts[ph] == 2:
+            closing_ends[ph] = m.end()
+
+    insertions: list[tuple[int, str]] = []
+    counts = {}
+    for m in _PLACEHOLDER_RE.finditer(translated):
+        ph = m.group(0)
+        counts[ph] = counts.get(ph, 0) + 1
+        if counts[ph] == 2 and ph in closing_ends:
+            orig_pos = closing_ends[ph]
+            if _has_space_after_placeholder(original, orig_pos):
+                trans_pos = m.end()
+                if _needs_space_after(translated, trans_pos):
+                    insertions.append((trans_pos, " "))
+
+    result = list(translated)
+    for pos, char in sorted(insertions, reverse=True):
+        result.insert(pos, char)
+    return "".join(result)
 
 
 def _collect_placeholder_ids(text: str) -> set[str]:
@@ -452,11 +524,25 @@ def _translate_batch_for_file_segmented(translator: Translator,
     """
     originals = [u.original for u in units]
     plain_segments, unit_segments = _segment_texts(originals)
+
+    # Aplicar glosario a los segmentos planos antes de enviarlos al servicio,
+    # para que términos técnicos no sean traducidos literalmente.
+    if glossary:
+        plain_segments = [_apply_glossary(s, glossary) for s in plain_segments]
+
     translated_segments = _translate_plain_segments(
         translator, plain_segments, source_lang, target_lang
     )
     results = _rebuild_texts(translated_segments, unit_segments)
 
+    # Algunos servicios pierden el espacio después de un placeholder de cierre
+    # cuando va precedido de puntuación; lo reinsertamos comparando con el original.
+    results = [
+        _ensure_space_after_closing_placeholders(orig, t)
+        for orig, t in zip(originals, results)
+    ]
+
+    # Segunda pasada para términos que puedan quedar en el texto circundante.
     if glossary:
         results = [_apply_glossary(t, glossary) for t in results]
 
@@ -482,6 +568,8 @@ def _translate_attrs_for_file(translator: Translator, file: ExtractedFile,
 
     if getattr(translator, "segment_placeholders", False):
         plain_segments, unit_segments = _segment_texts(attr_originals)
+        if glossary:
+            plain_segments = [_apply_glossary(s, glossary) for s in plain_segments]
         translated_segments = _translate_plain_segments(
             translator, plain_segments, source_lang, target_lang, batch_size=100
         )

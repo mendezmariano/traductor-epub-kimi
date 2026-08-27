@@ -86,13 +86,20 @@ El motor envuelve cada texto con `[ES]` y, si `expansion > 1`, repite el texto.
 Puede usarse una instancia pública o levantar una local con Docker:
 
 ```bash
-docker run -it -p 5000:5000 libretranslate/libretranslate
+docker run -it -p 5001:5001 libretranslate/libretranslate --port 5001
+```
+
+Si usas el entorno virtual del proyecto, el binario `libretranslate` ya está instalado:
+
+```bash
+source .venv/bin/activate
+libretranslate --host 127.0.0.1 --port 5001
 ```
 
 ```bash
 python3 main.py translate output/Developer --engine libretranslate \
   --source en --target es \
-  --base-url http://localhost:5000 \
+  --base-url http://localhost:5001 \
   --api-key $LIBRETRANSLATE_API_KEY \
   --delay 0.5
 ```
@@ -179,17 +186,22 @@ Y úsalo con cualquier motor:
 
 ```bash
 python3 main.py translate output/Developer --engine libretranslate \
-  --base-url http://localhost:5000 \
+  --base-url http://localhost:5001 \
   --glossary glossary.json
 ```
 
-El glosario funciona protegiendo los términos antes de enviarlos al traductor y restaurando sus traducciones después.
+El glosario funciona de dos maneras:
+
+1. Con motores basados en LLM (`openai-compatible`, `ollama`), los términos se incluyen en el prompt de sistema.
+2. Con `libretranslate`, el pipeline separa el texto plano de los placeholders, aplica el glosario a los segmentos planos ANTES de enviarlos al servicio y vuelve a aplicarlo después. Esto corrige términos técnicos incluso dentro de tags inline como `<i>pretrained</i>`.
 
 ---
 
 ## Solución de problemas
 
-- **El traductor modifica placeholders**: asegúrate de que el motor no altere tokens como `{ph0}` o `___PH0___`. Los motores oficiales implementan protección y restauración.
+- **El traductor modifica placeholders**: con LibreTranslate el pipeline usa segmentación (`segment_placeholders=True`) para no enviar los marcadores al servicio. Si ves advertencias de placeholders perdidos, revisa que `epub_toolkit/translator.py` esté actualizado.
+- **Términos técnicos dentro de tags inline no se corrigen**: usa `--glossary` y verifica que el término esté en el JSON. El glosario se aplica a los segmentos planos antes de la traducción.
+- **Espacios perdidos alrededor de placeholders (`sonpreentrenamientosobre`)**: el pipeline reconstruye los espacios fuera de los tags inline. Si persiste, reporta el caso con el texto original y la traducción.
 - **LibreTranslate devuelve errores de rate limit**: usa `--delay` para espaciar las peticiones.
 - **El EPUB reconstruido no se abre**: ejecuta `python3 -m unittest tests.test_roundtrip` para verificar que el roundtrip básico funciona.
 - **Faltan unidades**: los tags `<script>`, `<style>`, `<pre>`, `<svg>`, `<math>` y otros se ignoran por diseño (ver `epub_toolkit/utils.py`).

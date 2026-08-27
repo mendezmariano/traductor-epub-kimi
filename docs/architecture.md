@@ -113,6 +113,16 @@ La traducción se realiza por lotes agrupados por archivo XHTML. Esto reduce el 
 
 Antes de enviar texto a un servicio, los placeholders `{phN}` se reemplazan por marcadores `___PHN___` que los traductores suelen respetar. Después se restauran.
 
+### Segmentación para LibreTranslate
+
+LibreTranslate tiende a modificar o eliminar los marcadores `___PHN___`. Para evitarlo, `LibreTranslateTranslator` activa `segment_placeholders = True`. En ese modo el pipeline:
+
+1. Separa cada unidad en segmentos de texto plano y placeholders (`_segment_texts`).
+2. Traduce los segmentos planos en lotes (`_translate_plain_segments`).
+3. Reconstruye la unidad conservando los placeholders originales y los espacios circundantes (`_rebuild_texts`).
+
+Los espacios que en el original están junto a un placeholder se mueven a los extremos del placeholder reconstruido, de modo que aparezcan fuera del tag inline y no se pierdan.
+
 ### Validación de respuestas de LLM
 
 Tras recibir un lote traducido, `translate_batch_for_file` valida que cada texto conservé los mismos placeholders `{phN}` que el original. Si detecta placeholders perdidos:
@@ -124,7 +134,12 @@ La misma validación se aplica a los atributos traducibles.
 
 ### Protección de glosario
 
-Si se proporciona un glosario, sus términos se reemplazan por `___GLSN___` antes de la traducción y se restauran con su traducción después. Los términos se ordenan de más largo a más corto para evitar reemplazos parciales.
+Si se proporciona un glosario, el comportamiento depende del motor:
+
+- Con motores basados en LLM (`openai-compatible`, `ollama`) los términos se incluyen en el prompt de sistema.
+- Con `libretranslate`, el glosario se aplica directamente a los segmentos planos ANTES de enviarlos al servicio (`_apply_glossary`), y se vuelve a aplicar después de reconstruir. Esto permite corregir términos técnicos que de otro modo traduciría literalmente, incluso cuando están dentro de tags inline como `<i>pretrained</i>`.
+
+Los términos se ordenan de más largo a más corto y se respetan límites de palabra para evitar reemplazos parciales.
 
 ### Motores disponibles
 

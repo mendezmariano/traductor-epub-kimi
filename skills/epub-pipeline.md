@@ -31,12 +31,20 @@ python3 main.py translate output/<nombre> --engine <motor> \
 ```bash
 # Levantar servidor en segundo plano
 source .venv/bin/activate
-libretranslate --host 127.0.0.1 --port 5000 &
+libretranslate --host 127.0.0.1 --port 5001 &
 
 # Traducir
 python3 main.py translate output/<nombre> --engine libretranslate \
-  --base-url http://127.0.0.1:5000 --source en --target es \
+  --base-url http://127.0.0.1:5001 --source en --target es \
   --delay 0.1 --retries 3
+```
+
+### Traducir con glosario técnico
+
+```bash
+python3 main.py translate output/<nombre> --engine libretranslate \
+  --base-url http://127.0.0.1:5001 --source en --target es \
+  --glossary output/glossary.json --delay 0.1 --retries 3
 ```
 
 ### Traducir con motor dummy (pruebas)
@@ -60,12 +68,13 @@ python3 main.py reconstruct output/<nombre> \
 set -e
 LIBRO="Developer"
 source .venv/bin/activate
-libretranslate --host 127.0.0.1 --port 5000 &
+libretranslate --host 127.0.0.1 --port 5001 &
 LT_PID=$!
 sleep 5
 python3 main.py deconstruct "libros/${LIBRO}.epub" --output "output/${LIBRO}"
 python3 main.py translate "output/${LIBRO}" --engine libretranslate \
-  --base-url http://127.0.0.1:5000 --source en --target es --delay 0.1 --retries 3
+  --base-url http://127.0.0.1:5001 --source en --target es \
+  --glossary output/glossary.json --delay 0.1 --retries 3
 python3 main.py reconstruct "output/${LIBRO}" --output "output/${LIBRO}_es.epub" --language es
 kill $LT_PID
 ```

@@ -560,6 +560,20 @@ class SegmentedTranslationTestCase(unittest.TestCase):
         translator = LibreTranslateTranslator()
         self.assertTrue(translator.segment_placeholders)
 
+    def test_ensure_space_after_closing_placeholder(self) -> None:
+        from epub_toolkit.translator import _ensure_space_after_closing_placeholders
+        original = "Use a {ph0}pretrained{ph0}. Maybe it works."
+        translated = "Usa un {ph0}preentrenado{ph0}Tal vez funciona."
+        result = _ensure_space_after_closing_placeholders(original, translated)
+        self.assertEqual(result, "Usa un {ph0}preentrenado{ph0} Tal vez funciona.")
+
+    def test_ensure_space_does_not_create_double_spaces(self) -> None:
+        from epub_toolkit.translator import _ensure_space_after_closing_placeholders
+        original = "Use a {ph0}pretrained{ph0} model."
+        translated = "Usa un {ph0}preentrenado{ph0} modelo."
+        result = _ensure_space_after_closing_placeholders(original, translated)
+        self.assertEqual(result, translated)
+
 
 class LibreTranslateSegmentationIntegrationTestCase(unittest.TestCase):
     """Simula un LibreTranslate que destruye marcadores de placeholders."""
