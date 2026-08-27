@@ -363,7 +363,7 @@ Base sólida para cualquier manipulación futura del EPUB. Permite traducir sin 
   Traducidos `Dissecting the Dark Web` y `Heavy.epub` a `output/Dissecting_the_Dark_Web_es.epub` y `output/Heavy_es.epub`.
 
 - [x] **Fix: glosario aplicado antes de la traducción con LibreTranslate + espacios perdidos**  
-  Cambios en `epub_toolkit/translator.py`: el glosario se aplica a los segmentos planos antes de enviarlos al servicio, corrigiendo términos técnicos dentro de tags inline (`<i>pretrained</i>` → `<i>preentrenado</i>`). Se añade `_ensure_space_after_closing_placeholders` para recuperar espacios perdidos después de placeholders de cierre cuando van precedidos de puntuación. Se actualizan agentes/skills y documentación. Re-traducidos `Developer.epub`, `Dissecting the Dark Web` y `Heavy.epub` con los fixes. Tests: 61 OK.
+  `commit: 9937656` — El glosario se aplica a los segmentos planos antes de enviarlos al servicio, corrigiendo términos técnicos dentro de tags inline (`<i>pretrained</i>` → `<i>preentrenado</i>`). Se añade `_ensure_space_after_closing_placeholders` para recuperar espacios perdidos después de placeholders de cierre cuando van precedidos de puntuación. Se actualizan agentes/skills y documentación. Re-traducidos `Developer.epub`, `Dissecting the Dark Web` y `Heavy.epub` con los fixes. Tests: 61 OK.
 
 ---
 

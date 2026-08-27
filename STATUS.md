@@ -88,12 +88,7 @@ python3 -m unittest discover tests -v
 - Cada rama de entrega pasa `python3 -m unittest discover tests -v`.
 - El workflow `.github/workflows/ci.yml` ejecutará los tests automáticamente en push/PR a `master`/`main`.
 - Commit `f8acb54` agrega agentes/skills de Kimi Code y segmentación para LibreTranslate; traduce `Developer.epub` localmente a `output/Developer_es.epub`.
-- Cambios listos para commitear:
-  - `epub_toolkit/translator.py`: aplica el glosario a segmentos planos antes de enviarlos a LibreTranslate y reinserta espacios perdidos después de placeholders de cierre.
-  - `output/glossary.json`: limpieza de entradas con espacios iniciales/finales.
-  - Agentes/skills y documentación actualizados para reflejar segmentación, glosario, puerto 5001 y solución de espacios.
-  - EPUBs traducidos con los fixes: `Developer_es.epub`, `Dissecting_the_Dark_Web_es.epub`, `Heavy_es.epub`.
-  - Tests: 61 OK.
+- Commit `9937656` — fix(translator): glosario previo y espacios tras placeholders en LibreTranslate. Aplica el glosario a segmentos planos antes de enviarlos al servicio, reinserta espacios perdidos después de placeholders de cierre, actualiza agentes/skills/documentación y re-traduce los tres libros de ejemplo.
 
 
 
