@@ -12,7 +12,12 @@ from epub_toolkit.deconstructor import Deconstructor
 from epub_toolkit.extractor import Extractor
 from epub_toolkit.models import ExtractedDocument
 from epub_toolkit.reconstructor import Reconstructor
-from epub_toolkit.translator import create_translator, estimate_document, translate_document
+from epub_toolkit.translator import (
+    create_translator,
+    create_translator_from_config,
+    estimate_document,
+    translate_document,
+)
 
 
 def cmd_deconstruct(args: argparse.Namespace) -> int:
@@ -80,34 +85,57 @@ def cmd_translate(args: argparse.Namespace) -> int:
             print("El glosario debe ser un JSON de pares termino->traduccion.", file=sys.stderr)
             return 1
 
-    if args.engine in ("ollama", "openai", "openai-compatible") and not args.model:
-        print(f"El motor '{args.engine}' requiere --model.", file=sys.stderr)
-        return 1
-    if args.engine in ("openai", "openai-compatible") and not args.api_key:
-        print(f"El motor '{args.engine}' requiere --api-key.", file=sys.stderr)
-        return 1
+    if args.fallback_config:
+        fb_path = Path(args.fallback_config)
+        if not fb_path.exists():
+            print(f"No se encontró el archivo de fallback: {fb_path}", file=sys.stderr)
+            return 1
+        with open(fb_path, "r", encoding="utf-8") as f:
+            fb_config = json.load(f)
+        if not isinstance(fb_config, dict) or "translators" not in fb_config:
+            print(
+                "El fallback-config debe ser un JSON con clave 'translators'.",
+                file=sys.stderr,
+            )
+            return 1
+        try:
+            translator = create_translator_from_config(fb_config)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            return 1
+        engine_label = "fallback"
+    else:
+        if args.engine in ("ollama", "openai", "openai-compatible") and not args.model:
+            print(f"El motor '{args.engine}' requiere --model.", file=sys.stderr)
+            return 1
+        if args.engine in ("openai", "openai-compatible", "deepl", "azure", "google") and not args.api_key:
+            print(f"El motor '{args.engine}' requiere --api-key.", file=sys.stderr)
+            return 1
 
-    engine_kwargs: dict = {"expansion_hint": args.expansion}
-    if args.base_url:
-        engine_kwargs["base_url"] = args.base_url
-    if args.api_key:
-        engine_kwargs["api_key"] = args.api_key
-    if args.delay is not None:
-        engine_kwargs["delay"] = args.delay
-    if args.model:
-        engine_kwargs["model"] = args.model
-    if args.temperature is not None:
-        engine_kwargs["temperature"] = args.temperature
-    if args.engine != "dummy":
-        engine_kwargs["retries"] = args.retries
+        engine_kwargs: dict = {"expansion_hint": args.expansion}
+        if args.base_url:
+            engine_kwargs["base_url"] = args.base_url
+        if args.api_key:
+            engine_kwargs["api_key"] = args.api_key
+        if args.region:
+            engine_kwargs["region"] = args.region
+        if args.delay is not None:
+            engine_kwargs["delay"] = args.delay
+        if args.model:
+            engine_kwargs["model"] = args.model
+        if args.temperature is not None:
+            engine_kwargs["temperature"] = args.temperature
+        if args.engine != "dummy":
+            engine_kwargs["retries"] = args.retries
 
-    try:
-        translator = create_translator(args.engine, **engine_kwargs)
-    except ValueError as e:
-        print(str(e), file=sys.stderr)
-        return 1
+        try:
+            translator = create_translator(args.engine, **engine_kwargs)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            return 1
+        engine_label = args.engine
 
-    print(f"Traduciendo con motor '{args.engine}' ({args.source} -> {args.target})...")
+    print(f"Traduciendo con motor '{engine_label}' ({args.source} -> {args.target})...")
     if glossary:
         print(f"Usando glosario con {len(glossary)} términos.")
 
@@ -155,8 +183,8 @@ def main(argv: list[str] | None = None) -> int:
     tr = subparsers.add_parser("translate", help="Traduce las unidades extraídas.")
     tr.add_argument("work_dir", help="Directorio de trabajo generado por deconstruct.")
     tr.add_argument("--engine", default="dummy",
-                    choices=["dummy", "libretranslate", "openai",
-                             "openai-compatible", "ollama"],
+                    choices=["dummy", "libretranslate", "deepl", "azure", "google",
+                             "openai", "openai-compatible", "ollama"],
                     help="Motor de traducción.")
     tr.add_argument("--source", default="en", help="Idioma origen.")
     tr.add_argument("--target", default="es", help="Idioma destino.")
@@ -165,7 +193,9 @@ def main(argv: list[str] | None = None) -> int:
     tr.add_argument("--base-url", default=None,
                     help="URL base del servicio (LibreTranslate, openai-compatible u Ollama).")
     tr.add_argument("--api-key", default=None,
-                    help="API key para openai-compatible o LibreTranslate.")
+                    help="API key para openai-compatible, LibreTranslate, DeepL, Azure o Google.")
+    tr.add_argument("--region", default=None,
+                    help="Región de Azure Translator (opcional).")
     tr.add_argument("--delay", type=float, default=None,
                     help="Segundos de espera entre peticiones (LibreTranslate).")
     tr.add_argument("--model", default=None,
@@ -173,7 +203,9 @@ def main(argv: list[str] | None = None) -> int:
     tr.add_argument("--temperature", type=float, default=None,
                     help="Temperatura de muestreo para LLMs.")
     tr.add_argument("--retries", type=int, default=3,
-                    help="Reintentos ante errores transitorios de API (LibreTranslate, OpenAI, Ollama).")
+                    help="Reintentos ante errores transitorios de API.")
+    tr.add_argument("--fallback-config", default=None,
+                    help="Ruta a un JSON con configuración de traductores de fallback.")
     tr.add_argument("--glossary", default=None,
                     help="Ruta a un JSON con pares 'término': 'traducción'.")
     tr.add_argument("--quiet", action="store_true",

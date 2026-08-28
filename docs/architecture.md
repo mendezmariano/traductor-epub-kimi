@@ -145,10 +145,18 @@ Los términos se ordenan de más largo a más corto y se respetan límites de pa
 
 - `DummyTranslator`: para pruebas. Envuelve el texto con `[ES]` y simula expansión.
 - `LibreTranslateTranslator`: llama a `/translate` de una instancia de LibreTranslate.
+- `DeepLTranslator`: llama a `/v2/translate` de DeepL.
+- `AzureTranslator`: llama a `/translate` de Azure Cognitive Services Translator.
+- `GoogleTranslator`: llama a `language/translate/v2` de Google Cloud Translation.
 - `OpenAITranslator`: usa `/chat/completions`. Envía prompts numerados y parsea respuestas numeradas.
 - `OllamaTranslator`: usa `/api/generate` de Ollama local.
+- `FallbackTranslator`: envuelve una lista de traductores y prueba cada uno hasta que uno funcione.
 
 Todos los motores implementan la clase abstracta `Translator`.
+
+### Detección de cuota agotada
+
+Los traductores que usan servicios con límites gratuitos lanzan `QuotaExceededError` cuando la respuesta indica cuota agotada (HTTP 456 para DeepL, HTTP 429/403 con mensaje de quota para Azure/Google). Esto permite que `FallbackTranslator` salte al siguiente motor de forma controlada.
 
 ### Prompts para LLM
 

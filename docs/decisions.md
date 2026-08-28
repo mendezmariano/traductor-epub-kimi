@@ -171,3 +171,21 @@ Este documento registra las decisiones técnicas y de diseño tomadas en el proy
 - Se implementan `_segment_texts`, `_translate_plain_segments` y `_rebuild_texts` en `epub_toolkit/translator.py`.
 - Los espacios alrededor de placeholders se reconstruyen fuera de los tags inline, evitando artefactos como `sonpreentrenamientosobre`.
 - El glosario se aplica a los segmentos planos antes de la traducción, corrigiendo términos técnicos dentro de tags inline.
+
+---
+
+## DEC-013: Soporte de motores de traducción comerciales y fallback por cuota
+
+**Decisión:** Añadir soporte para DeepL, Azure Translator y Google Cloud Translation, además de un traductor compuesto (`FallbackTranslator`) que salta al siguiente motor cuando el actual agota su cuota.
+
+**Motivación:**
+- LibreTranslate local es gratis pero la calidad lingüística es inferior a motores comerciales.
+- DeepL, Azure y Google ofrecen tiers gratuitos generosos y no requieren GPU propia.
+- Los tiers gratuitos tienen límites mensuales; un fallback permite terminar un libro grande sin intervención manual.
+
+**Consecuencias:**
+- Se añaden `DeepLTranslator`, `AzureTranslator`, `GoogleTranslator` y `FallbackTranslator` en `epub_toolkit/translator.py`.
+- Se crea `QuotaExceededError` para detectar cuota agotada de forma uniforme.
+- Se usa `urllib` para mantener la política de cero dependencias externas.
+- El CLI expone `--engine deepl|azure|google` y `--fallback-config`.
+- Se añaden tests de integración con mocks HTTP para cada motor y para el fallback.

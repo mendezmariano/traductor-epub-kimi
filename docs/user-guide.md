@@ -104,6 +104,64 @@ python3 main.py translate output/Developer --engine libretranslate \
   --delay 0.5
 ```
 
+### DeepL
+
+Requiere una cuenta gratuita en [DeepL API Free](https://www.deepl.com/pro-api). El plan gratis incluye 500.000 caracteres/mes.
+
+```bash
+python3 main.py translate output/Developer --engine deepl \
+  --source en --target es \
+  --api-key $DEEPL_API_KEY
+```
+
+### Azure Translator
+
+Requiere un recurso de **Azure Cognitive Services Translator**. El plan gratis incluye 2 millones de caracteres/mes.
+
+```bash
+python3 main.py translate output/Developer --engine azure \
+  --source en --target es \
+  --api-key $AZURE_TRANSLATOR_KEY \
+  --region $AZURE_TRANSLATOR_REGION
+```
+
+Si no indicas `--region`, se usa el endpoint global.
+
+### Google Cloud Translation
+
+Requiere una API key de Google Cloud.
+
+```bash
+python3 main.py translate output/Developer --engine google \
+  --source en --target es \
+  --api-key $GOOGLE_API_KEY
+```
+
+### Fallback automático entre motores
+
+Puedes configurar una cadena de motores para que, si uno agota su cuota, el pipeline pase al siguiente automáticamente. Crea un JSON con la clave `translators`:
+
+```json
+{
+  "translators": [
+    {"engine": "deepl", "api_key": "..."},
+    {"engine": "azure", "api_key": "...", "region": "westeurope"},
+    {"engine": "google", "api_key": "..."},
+    {"engine": "libretranslate", "base_url": "http://127.0.0.1:5001"}
+  ]
+}
+```
+
+Y úsalo con:
+
+```bash
+python3 main.py translate output/Developer \
+  --source en --target es \
+  --fallback-config fallback.json
+```
+
+El orden es importante: se intenta el primero, y si devuelve error de cuota agotada (HTTP 429/456/403 con mensaje de quota) se pasa al siguiente.
+
 ### OpenAI o compatible (Groq, Mistral, etc.)
 
 El motor `openai-compatible` funciona con cualquier proveedor que use la API de chat completions de OpenAI. Requiere `--model` y `--api-key`.

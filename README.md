@@ -70,7 +70,8 @@ Ver [`STATUS.md`](STATUS.md) para más detalles.
 
 ## Funcionalidades principales
 
-- Traducción con múltiples motores: `dummy`, `LibreTranslate`, `openai-compatible` (OpenAI, Groq, Mistral, etc.) y `Ollama`.
+- Traducción con múltiples motores: `dummy`, `LibreTranslate`, `DeepL`, `Azure Translator`, `Google Cloud Translation`, `openai-compatible` (OpenAI, Groq, Mistral, etc.) y `Ollama`.
+- Fallback automático entre motores cuando se agota la cuota del primero.
 - Traducción por lotes agrupada por archivo XHTML para mejorar coherencia y reducir llamadas a API.
 - Soporte de glosarios para términos técnicos consistentes.
 - Preservación de tags inline mediante placeholders numerados.

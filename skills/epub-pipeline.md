@@ -47,6 +47,23 @@ python3 main.py translate output/<nombre> --engine libretranslate \
   --glossary output/glossary.json --delay 0.1 --retries 3
 ```
 
+### Traducir con DeepL, Azure o Google
+
+```bash
+python3 main.py translate output/<nombre> --engine deepl --source en --target es --api-key $DEEPL_API_KEY
+
+python3 main.py translate output/<nombre> --engine azure --source en --target es \
+  --api-key $AZURE_TRANSLATOR_KEY --region $AZURE_TRANSLATOR_REGION
+
+python3 main.py translate output/<nombre> --engine google --source en --target es --api-key $GOOGLE_API_KEY
+```
+
+### Fallback entre motores
+
+```bash
+python3 main.py translate output/<nombre> --source en --target es --fallback-config fallback.json
+```
+
 ### Traducir con motor dummy (pruebas)
 
 ```bash

@@ -3,8 +3,12 @@
 Soporta:
 - Dummy (pruebas)
 - LibreTranslate (API REST)
+- DeepL (API REST)
+- Azure Translator (API REST)
+- Google Cloud Translation (API REST)
 - OpenAI / compatibles (API REST)
 - Ollama (LLM local via API REST)
+- Fallback automático entre motores
 
 A partir de ahora la traducción se realiza por lotes agrupados por archivo
 XHTML, lo que mejora la coherencia terminológica y reduce el número de
@@ -19,6 +23,7 @@ import re
 import string
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import warnings
 from abc import ABC, abstractmethod
@@ -902,6 +907,37 @@ def _post_json_raw(url: str, payload: dict[str, Any],
         return json.loads(resp.read().decode("utf-8"))
 
 
+class QuotaExceededError(RuntimeError):
+    """Se lanza cuando un motor de traducción agota su cuota."""
+
+    pass
+
+
+def _is_quota_error(code: int, body: str) -> bool:
+    """Detecta si una respuesta HTTP indica cuota agotada."""
+    body_lower = body.lower()
+    quota_indicators = [
+        "quota",
+        "rate limit",
+        "too many requests",
+        "límite",
+        "cuota",
+    ]
+    if code == 456:
+        return True
+    if code in (429, 403) and any(ind in body_lower for ind in quota_indicators):
+        return True
+    return False
+
+
+def _raise_for_quota(url: str, code: int, body: str) -> None:
+    """Lanza QuotaExceededError si la respuesta indica cuota agotada."""
+    if _is_quota_error(code, body):
+        raise QuotaExceededError(
+            f"Cuota agotada en {url} (HTTP {code}): {body}"
+        )
+
+
 def _post_json(url: str, payload: dict[str, Any],
                headers: dict[str, str] | None = None) -> dict[str, Any]:
     """Envía un POST JSON y devuelve la respuesta parseada."""
@@ -909,6 +945,7 @@ def _post_json(url: str, payload: dict[str, Any],
         return _post_json_raw(url, payload, headers)
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="ignore")
+        _raise_for_quota(url, e.code, body)
         raise RuntimeError(f"Error HTTP ({e.code}): {body}") from e
     except Exception as e:
         raise RuntimeError(f"No se pudo contactar el servicio: {e}") from e
@@ -931,6 +968,7 @@ def _post_json_with_retry(url: str, payload: dict[str, Any],
         except urllib.error.HTTPError as e:
             last_error = e
             body = e.read().decode("utf-8", errors="ignore")
+            _raise_for_quota(url, e.code, body)
             if not _is_retryable_http_error(e.code) or attempt == retries:
                 raise RuntimeError(f"Error HTTP ({e.code}): {body}") from e
         except (urllib.error.URLError, TimeoutError) as e:
@@ -945,6 +983,167 @@ def _post_json_with_retry(url: str, payload: dict[str, Any],
     raise RuntimeError(f"No se pudo contactar el servicio tras {retries} reintentos: {last_error}")
 
 
+class DeepLTranslator(Translator):
+    """Traductor mediante la API de DeepL."""
+
+    def __init__(self, api_key: str,
+                 base_url: str = "https://api-free.deepl.com",
+                 expansion_hint: float | None = None,
+                 retries: int = 3) -> None:
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.retries = retries
+
+    def translate(self, text: str, source_lang: str, target_lang: str) -> str:
+        results = self.translate_batch([text], source_lang, target_lang)
+        return results[0]
+
+    def translate_batch(self, texts: list[str], source_lang: str, target_lang: str,
+                        context_title: str = "",
+                        glossary: Glossary | None = None,
+                        **kwargs: Any) -> list[str]:
+        if not texts:
+            return []
+        url = f"{self.base_url}/v2/translate"
+        payload: dict[str, Any] = {
+            "text": texts,
+            "source_lang": source_lang.upper(),
+            "target_lang": target_lang.upper(),
+        }
+        headers = {"Authorization": f"DeepL-Auth-Key {self.api_key}"}
+        result = _post_json_with_retry(url, payload, headers=headers, retries=self.retries)
+        translations = result.get("translations")
+        if not isinstance(translations, list) or len(translations) != len(texts):
+            raise RuntimeError(
+                f"Respuesta inesperada de DeepL: {result}"
+            )
+        return [t.get("text", "") for t in translations]
+
+
+class AzureTranslator(Translator):
+    """Traductor mediante Azure Cognitive Services Translator."""
+
+    def __init__(self, api_key: str,
+                 region: str | None = None,
+                 base_url: str = "https://api.cognitive.microsofttranslator.com",
+                 expansion_hint: float | None = None,
+                 retries: int = 3) -> None:
+        self.api_key = api_key
+        self.region = region
+        self.base_url = base_url.rstrip("/")
+        self.retries = retries
+
+    def translate(self, text: str, source_lang: str, target_lang: str) -> str:
+        results = self.translate_batch([text], source_lang, target_lang)
+        return results[0]
+
+    def translate_batch(self, texts: list[str], source_lang: str, target_lang: str,
+                        context_title: str = "",
+                        glossary: Glossary | None = None,
+                        **kwargs: Any) -> list[str]:
+        if not texts:
+            return []
+        params = {
+            "api-version": "3.0",
+            "from": source_lang,
+            "to": target_lang,
+        }
+        url = f"{self.base_url}/translate?{urllib.parse.urlencode(params)}"
+        payload = [{"Text": t} for t in texts]
+        headers = {
+            "Ocp-Apim-Subscription-Key": self.api_key,
+            "Content-Type": "application/json",
+        }
+        if self.region:
+            headers["Ocp-Apim-Subscription-Region"] = self.region
+        result = _post_json_with_retry(url, payload, headers=headers, retries=self.retries)
+        if not isinstance(result, list) or len(result) != len(texts):
+            raise RuntimeError(f"Respuesta inesperada de Azure: {result}")
+        translations: list[str] = []
+        for item, original in zip(result, texts):
+            item_translations = item.get("translations")
+            if not isinstance(item_translations, list) or not item_translations:
+                translations.append(original)
+            else:
+                translations.append(item_translations[0].get("text", ""))
+        return translations
+
+
+class GoogleTranslator(Translator):
+    """Traductor mediante Google Cloud Translation API."""
+
+    def __init__(self, api_key: str,
+                 base_url: str = "https://translation.googleapis.com/language/translate/v2",
+                 expansion_hint: float | None = None,
+                 retries: int = 3) -> None:
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.retries = retries
+
+    def translate(self, text: str, source_lang: str, target_lang: str) -> str:
+        results = self.translate_batch([text], source_lang, target_lang)
+        return results[0]
+
+    def translate_batch(self, texts: list[str], source_lang: str, target_lang: str,
+                        context_title: str = "",
+                        glossary: Glossary | None = None,
+                        **kwargs: Any) -> list[str]:
+        if not texts:
+            return []
+        query = urllib.parse.urlencode({"key": self.api_key})
+        url = f"{self.base_url}?{query}"
+        payload: dict[str, Any] = {
+            "q": texts,
+            "source": source_lang,
+            "target": target_lang,
+            "format": "text",
+        }
+        result = _post_json_with_retry(url, payload, retries=self.retries)
+        data = result.get("data")
+        if not isinstance(data, dict):
+            raise RuntimeError(f"Respuesta inesperada de Google: {result}")
+        translations = data.get("translations")
+        if not isinstance(translations, list) or len(translations) != len(texts):
+            raise RuntimeError(f"Respuesta inesperada de Google: {result}")
+        return [t.get("translatedText", "") for t in translations]
+
+
+class FallbackTranslator(Translator):
+    """Traductor que intenta una lista de traductores hasta que uno funcione."""
+
+    def __init__(self, translators: list[Translator]) -> None:
+        if not translators:
+            raise ValueError("Se requiere al menos un traductor para el fallback")
+        self.translators = translators
+
+    def translate(self, text: str, source_lang: str, target_lang: str) -> str:
+        results = self.translate_batch([text], source_lang, target_lang)
+        return results[0]
+
+    def translate_batch(self, texts: list[str], source_lang: str, target_lang: str,
+                        context_title: str = "",
+                        glossary: Glossary | None = None,
+                        **kwargs: Any) -> list[str]:
+        if not texts:
+            return []
+        errors: list[str] = []
+        for translator in self.translators:
+            try:
+                return translator.translate_batch(
+                    texts, source_lang, target_lang,
+                    context_title=context_title, glossary=glossary, **kwargs
+                )
+            except QuotaExceededError as e:
+                errors.append(str(e))
+                continue
+            except RuntimeError as e:
+                errors.append(str(e))
+                continue
+        raise RuntimeError(
+            "Todos los traductores de fallback fallaron:\n" + "\n".join(errors)
+        )
+
+
 def create_translator(engine: str, **kwargs) -> Translator:
     """Factoría de traductores."""
     engine = engine.lower()
@@ -952,8 +1151,30 @@ def create_translator(engine: str, **kwargs) -> Translator:
         return DummyTranslator(**kwargs)
     if engine == "libretranslate":
         return LibreTranslateTranslator(**kwargs)
+    if engine == "deepl":
+        return DeepLTranslator(**kwargs)
+    if engine == "azure":
+        return AzureTranslator(**kwargs)
+    if engine == "google":
+        return GoogleTranslator(**kwargs)
     if engine in ("openai", "openai-compatible"):
         return OpenAICompatibleTranslator(**kwargs)
     if engine == "ollama":
         return OllamaTranslator(**kwargs)
     raise ValueError(f"Motor de traducción desconocido: {engine}")
+
+
+def create_translator_from_config(config: dict[str, Any]) -> Translator:
+    """Crea un traductor a partir de un diccionario de configuración.
+
+    El diccionario debe tener una clave 'engine'. Si tiene una clave
+    'translators' con una lista, se crea un FallbackTranslator.
+    """
+    if "translators" in config:
+        translators = [create_translator_from_config(c) for c in config["translators"]]
+        return FallbackTranslator(translators)
+    engine = config.get("engine")
+    if not engine:
+        raise ValueError("La configuración del traductor debe incluir 'engine'")
+    kwargs = {k: v for k, v in config.items() if k != "engine"}
+    return create_translator(engine, **kwargs)

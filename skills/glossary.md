@@ -54,8 +54,9 @@ PY
 - En texto plano entre placeholders.
 - En atributos traducibles (`alt`, `title`, `aria-label`, `placeholder`).
 - El contenido dentro de placeholders (tags inline) se traduce como texto plano, por lo que el glosario también lo corrige.
+- Funciona con todos los motores: `libretranslate`, `deepl`, `azure`, `google`, `openai-compatible`, `ollama`.
 
 ## Dónde NO actúa el glosario
 
-- No corrige errores semánticos generales de LibreTranslate (p. ej. "invertir el ingeniero").
+- No corrige errores semánticos generales del motor de traducción (p. ej. "invertir el ingeniero").
 - No mejora la calidad literaria del texto circundante.

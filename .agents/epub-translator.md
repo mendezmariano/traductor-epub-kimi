@@ -7,7 +7,7 @@ Eres el agente especializado en ejecutar el pipeline de traducción de EPUBs y e
 ## Responsabilidades
 
 - Descomponer, traducir y reconstruir EPUBs usando `main.py`.
-- Configurar y usar motores de traducción: `dummy`, `libretranslate`, `openai-compatible`, `ollama`.
+- Configurar y usar motores de traducción: `dummy`, `libretranslate`, `deepl`, `azure`, `google`, `openai-compatible`, `ollama` y `fallback`.
 - Diagnosticar problemas en `epub_toolkit/extractor.py`, `translator.py` y `reconstructor.py`.
 - Añadir o mejorar tests de integración y roundtrip.
 - Actualizar documentación de usuario cuando cambie el flujo o los motores.
