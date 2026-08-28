@@ -88,12 +88,7 @@ python3 -m unittest discover tests -v
 - Cada rama de entrega pasa `python3 -m unittest discover tests -v`.
 - El workflow `.github/workflows/ci.yml` ejecutará los tests automáticamente en push/PR a `master`/`main`.
 - Commit `f8acb54` agrega agentes/skills de Kimi Code y segmentación para LibreTranslate; traduce `Developer.epub` localmente a `output/Developer_es.epub`.
-- Cambios listos para commitear:
-  - `epub_toolkit/translator.py`: añade motores `DeepLTranslator`, `AzureTranslator`, `GoogleTranslator`, `FallbackTranslator` y `QuotaExceededError`.
-  - `main.py`: soporta `--engine deepl|azure|google`, `--region` y `--fallback-config`.
-  - Tests de integración para DeepL, Azure, Google y fallback.
-  - Documentación actualizada (`docs/`, `skills/`, `README.md`, `.agents/`).
-  - Tests: 90 OK.
+- Commit `30bf9d8` — feat(translator): añade motores DeepL, Azure, Google y fallback por cuota. Incluye `QuotaExceededError`, `--fallback-config`, `--region` y tests de integración.
 
 
 

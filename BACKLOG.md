@@ -365,8 +365,8 @@ Base sólida para cualquier manipulación futura del EPUB. Permite traducir sin 
 - [x] **Fix: glosario aplicado antes de la traducción con LibreTranslate + espacios perdidos**  
   `commit: 9937656` — El glosario se aplica a los segmentos planos antes de enviarlos al servicio, corrigiendo términos técnicos dentro de tags inline (`<i>pretrained</i>` → `<i>preentrenado</i>`). Se añade `_ensure_space_after_closing_placeholders` para recuperar espacios perdidos después de placeholders de cierre cuando van precedidos de puntuación. Se actualizan agentes/skills y documentación. Re-traducidos `Developer.epub`, `Dissecting the Dark Web` y `Heavy.epub` con los fixes. Tests: 61 OK.
 
-- [ ] **Motores de traducción comerciales y fallback por cuota**  
-  Cambios en `epub_toolkit/translator.py`: añade `DeepLTranslator`, `AzureTranslator`, `GoogleTranslator`, `FallbackTranslator` y `QuotaExceededError`. Actualiza `main.py` con `--engine deepl|azure|google`, `--region` y `--fallback-config`. Añade tests de integración. Actualiza documentación. Tests: 90 OK.
+- [x] **Motores de traducción comerciales y fallback por cuota**  
+  `commit: 30bf9d8` — Añade `DeepLTranslator`, `AzureTranslator`, `GoogleTranslator`, `FallbackTranslator` y `QuotaExceededError`. Actualiza `main.py` con `--engine deepl|azure|google`, `--region` y `--fallback-config`. Añade tests de integración. Actualiza documentación. Tests: 90 OK.
 
 ---
 
